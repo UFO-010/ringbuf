@@ -9,8 +9,10 @@
 
 template <typename T, size_t max_size, bool ThreadSafe>
 class spcs_ringbuf {
+    // static_assert((max_size & (max_size - 1)) == 0, "max_size value should be power of 2");
+
 public:
-    explicit spcs_ringbuf() {}
+    explicit spcs_ringbuf() = default;
 
     void reset() {
         store(head, 0);
@@ -19,7 +21,7 @@ public:
 
     size_t size() { return get_data_size(); }
 
-    size_t capacity() { return max_size; }
+    size_t capacity() const { return max_size; }
 
     bool empty() const { return get_data_size() == 0; }
 
@@ -250,7 +252,9 @@ private:
      * @param order
      */
     template <typename varType>
-    void store(varType &var, size_t value, std::memory_order order = std::memory_order_relaxed) {
+    void store(varType &var,
+               size_t value,
+               std::memory_order order = std::memory_order_relaxed) const {
         if constexpr (ThreadSafe) {
             var.store(value, order);
         } else {
