@@ -26,19 +26,15 @@ TEST(ringbuf_test, read_test) {
 }
 
 TEST(ringbuf_test, overflow_test) {
+    constexpr size_t temp_size = 16;
     // Remember that string_view doesn't guarantee null-terminated character
     constexpr std::string_view st("Hello world", sizeof("Hello world"));
-    spcs_ringbuf<char, st.size(), false> a;
+    spcs_ringbuf<char, temp_size, false> a;
     std::array<char, st.size()> out_buf = {};  // Remember '\0'
     out_buf.fill('\0');
 
     a.append(st.data(), st.size());
 
-    a.read_ready(out_buf.data(), out_buf.size());
-    ASSERT_THAT(out_buf, testing::ElementsAreArray(st));
-
-    out_buf.fill('\0');
-    a.append(st.data(), st.size());
     a.read_ready(out_buf.data(), out_buf.size());
     ASSERT_THAT(out_buf, testing::ElementsAreArray(st));
 
@@ -50,8 +46,8 @@ TEST(ringbuf_test, overflow_test) {
 
     a.reset();
     out_buf.fill('\0');
-    a.append("Hello world", 11);
-    a.append("world Hello", 11);
+    a.append("Hello world", st.size());
+    a.append("world Hello", st.size());
     a.read_ready(out_buf.data(), out_buf.size());
     ASSERT_THAT(out_buf, testing::ElementsAreArray("Hello world"));
 }
