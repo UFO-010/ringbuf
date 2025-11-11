@@ -45,44 +45,18 @@ public:
         tail.store(local_tail, std::memory_order_release);
     }
 
-    void append(const T *item, size_t size) {
-        if (size == 0) {
-            return;
+    size_t append(const T *item, size_t size) {
+        if (size == 0 || item == nullptr) {
+            return 0;
         }
-
-        size_t free_data_size = get_free_size();
-        if (free_data_size == 0) {
-            return;
-        }
-
-        size_t copy_size = std::min(size, free_data_size);
 
         size_t local_tail = load(tail, std::memory_order_acquire);
 
-        // Copy linear part
-        const T *data_ptr = item;
-        size_t first_part = std::min(max_size - local_tail, copy_size);
-        if constexpr (std::is_trivially_copyable_v<T>) {
-            std::memcpy(buf.data() + local_tail, data_ptr, first_part * sizeof(T));
-        } else {
-            std::copy_n(data_ptr, first_part, buf.get() + local_tail);
-        }
-        data_ptr += first_part;
-
-        size_t second_part = copy_size - first_part;
-
-        // Copy overflow part
-        if (second_part > 0) {
-            if constexpr (std::is_trivially_copyable_v<T>) {
-                std::memcpy(buf.data(), data_ptr, second_part * sizeof(T));
-            } else {
-                std::copy_n(data_ptr, second_part, buf.data());
-            }
-        }
-
-        size_t new_tail = (local_tail + copy_size) % max_size;
+        size_t copy_size = buf_store(local_tail, item, size);
+        size_t new_tail = (local_tail + copy_size) & (max_size - 1);
 
         store(tail, new_tail, std::memory_order_release);
+        return copy_size;
     }
 
     T get() {
@@ -128,38 +102,10 @@ public:
             return 0;
         }
 
-        size_t full_data_size = get_data_size();
-        if (full_data_size == 0) {
-            return 0;
-        }
-
-        size_t copy_size = std::min(full_data_size, size);
-
         size_t local_head = load(head, std::memory_order_acquire);
 
-        // Copy linear part
-        T *data_ptr = item;
-        size_t first_part = std::min(max_size - local_head, copy_size);
-
-        if constexpr (std::is_trivially_copyable_v<T>) {
-            std::memcpy(data_ptr, buf.data() + local_head, first_part * sizeof(T));
-        } else {
-            std::copy_n(buf.data() + local_head, first_part, data_ptr);
-        }
-        data_ptr += first_part;
-
-        size_t second_part = copy_size - first_part;
-
-        // Copy overflow part
-        if (second_part > 0) {
-            if constexpr (std::is_trivially_copyable_v<T>) {
-                std::memcpy(data_ptr, buf.data(), second_part * sizeof(T));
-            } else {
-                std::copy_n(buf.data(), second_part, data_ptr);
-            }
-        }
-
-        size_t new_head = (local_head + copy_size) % max_size;
+        size_t copy_size = buf_read(local_head, item, size);
+        size_t new_head = (local_head + copy_size) & (max_size - 1);
 
         store(head, new_head, std::memory_order_release);
 
@@ -167,7 +113,7 @@ public:
     }
 
     size_t peek_ready(T *item, size_t size) {
-        if (size == 0) {
+        if (size == 0 || item == nullptr) {
             return 0;
         }
 
@@ -176,30 +122,9 @@ public:
             return 0;
         }
 
-        size_t copy_size = std::min(full_data_size, size);
-
         size_t local_head = load(head, std::memory_order_relaxed);
 
-        // Copy linear part
-        T *data_ptr = item;
-        size_t first_part = std::min(max_size - local_head, copy_size);
-        if constexpr (std::is_trivially_copyable_v<T>) {
-            std::memcpy(data_ptr, buf.data() + local_head, first_part * sizeof(T));
-        } else {
-            std::copy_n(buf.data() + local_head, first_part, data_ptr);
-        }
-
-        data_ptr += first_part;
-        size_t second_part = copy_size - first_part;
-
-        // Copy overflow part
-        if (second_part > 0) {
-            if constexpr (std::is_trivially_copyable_v<T>) {
-                std::memcpy(data_ptr, buf.data(), second_part * sizeof(T));
-            } else {
-                std::copy_n(buf.data(), second_part, data_ptr);
-            }
-        }
+        size_t copy_size = buf_read(local_head, item, size);
 
         return copy_size;
     }
@@ -220,11 +145,7 @@ public:
         size_t local_head = load(head);
         size_t local_tail = load(tail);
 
-        if (local_tail >= local_head) {
-            return local_tail - local_head;
-        } else {
-            return max_size - (local_head - local_tail);
-        }
+        return (local_tail - local_head) & (max_size - 1);
     }
 
     /**
@@ -260,6 +181,70 @@ private:
             (void)order;
             var = value;
         }
+    }
+
+    size_t buf_store(const size_t local_tail, const T *item, size_t size) {
+        size_t free_data_size = get_free_size();
+        if (free_data_size == 0) {
+            return 0;
+        }
+
+        size_t copy_size = std::min(size, free_data_size);
+
+        // Copy linear part
+        const T *data_ptr = item;
+        size_t first_part = std::min(max_size - local_tail, copy_size);
+        if constexpr (std::is_trivially_copyable_v<T>) {
+            std::memcpy(buf.data() + local_tail, data_ptr, first_part * sizeof(T));
+        } else {
+            std::copy_n(data_ptr, first_part, buf.get() + local_tail);
+        }
+        data_ptr += first_part;
+
+        size_t second_part = copy_size - first_part;
+
+        // Copy overflow part
+        if (second_part > 0) {
+            if constexpr (std::is_trivially_copyable_v<T>) {
+                std::memcpy(buf.data(), data_ptr, second_part * sizeof(T));
+            } else {
+                std::copy_n(data_ptr, second_part, buf.data());
+            }
+        }
+
+        return copy_size;
+    }
+
+    size_t buf_read(const size_t local_head, T *item, const size_t size) {
+        size_t full_data_size = get_data_size();
+        if (full_data_size == 0) {
+            return 0;
+        }
+
+        size_t copy_size = std::min(full_data_size, size);
+
+        // Copy linear part
+        T *data_ptr = item;
+        size_t first_part = std::min(max_size - local_head, copy_size);
+        if constexpr (std::is_trivially_copyable_v<T>) {
+            std::memcpy(data_ptr, buf.data() + local_head, first_part * sizeof(T));
+        } else {
+            std::copy_n(buf.data() + local_head, first_part, data_ptr);
+        }
+
+        data_ptr += first_part;
+        size_t second_part = copy_size - first_part;
+
+        // Copy overflow part
+        if (second_part > 0) {
+            if constexpr (std::is_trivially_copyable_v<T>) {
+                std::memcpy(data_ptr, buf.data(), second_part * sizeof(T));
+            } else {
+                std::copy_n(buf.data(), second_part, data_ptr);
+            }
+        }
+
+        return copy_size;
     }
 
     std::array<T, max_size> buf;
