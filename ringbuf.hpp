@@ -183,7 +183,6 @@ public:
         // Copy linear part
         T *data_ptr = item;
         size_t first_part = std::min(max_size - local_head, copy_size);
-        // std::copy(buf.data() + local_head, buf.data() + local_head + items_to_copy, data_ptr);
         if constexpr (std::is_trivially_copyable_v<T>) {
             std::memcpy(data_ptr, buf.data() + local_head, first_part * sizeof(T));
         } else {
