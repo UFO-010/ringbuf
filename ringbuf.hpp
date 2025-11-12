@@ -42,7 +42,7 @@ public:
     }
 
     size_t append(const T *item, size_t size) {
-        if (size == 0 || item == nullptr || size > max_size) {
+        if (size == 0 || item == nullptr) {
             return 0;
         }
 
@@ -95,7 +95,7 @@ public:
     }
 
     size_t read_ready(T *item, size_t size) {
-        if (size == 0 || item == nullptr || size > max_size) {
+        if (size == 0 || item == nullptr) {
             return 0;
         }
 

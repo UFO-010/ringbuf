@@ -69,4 +69,14 @@ TEST(ringbuf_test, overflow_test) {
     a.append("world Hello", st.size());
     a.read_ready(out_buf.data(), out_buf.size());
     ASSERT_THAT(out_buf, testing::ElementsAreArray("Hello world"));
+
+    // We should be able to read and write at least ringbuf capacity
+    a.reset();
+    constexpr size_t big_size = 128;
+    std::array<char, big_size> big_buf = {};
+    big_buf.fill('\0');
+    size_t readed = a.append(big_buf.data(), big_buf.size());
+    EXPECT_EQ(readed, a.capacity() - 1);
+    readed = a.read_ready(big_buf.data(), big_buf.size());
+    EXPECT_EQ(readed, a.capacity() - 1);
 }
