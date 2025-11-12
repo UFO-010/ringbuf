@@ -7,6 +7,8 @@
 #include <atomic>
 #include <cstring>
 
+#include <iostream>
+
 template <typename T, size_t max_size, bool ThreadSafe>
 class spsc_ringbuf {
     static_assert((max_size & (max_size - 1)) == 0, "max_size value should be power of 2");
@@ -19,7 +21,7 @@ public:
         store(tail, 0);
     }
 
-    size_t size() { return get_data_size(); }
+    size_t size() const { return get_data_size(); }
 
     size_t capacity() const { return max_size; }
 
@@ -27,26 +29,22 @@ public:
 
     bool full() const { return get_free_size() == 0; }
 
-    void push_back(const T &item) {
-        size_t free_data_size = get_free_size();
-        if (free_data_size == 0) {
-            return;
+    bool push_back(const T &item) {
+        if (full()) {
+            return false;
         }
 
-        size_t local_tail = tail.load(std::memory_order_acquire);
+        size_t local_tail = load(tail, std::memory_order_acquire);
 
         buf[local_tail] = item;
 
-        local_tail++;
-        if (local_tail >= max_size) {
-            local_tail = 0;
-        }
+        local_tail = (local_tail + 1) & (max_size - 1);
 
         tail.store(local_tail, std::memory_order_release);
     }
 
     size_t append(const T *item, size_t size) {
-        if (size == 0 || item == nullptr) {
+        if (size == 0 || item == nullptr || size > max_size) {
             return 0;
         }
 
@@ -60,13 +58,14 @@ public:
     }
 
     T get() {
+        if (empty()) {
+            return {};
+        }
+
         size_t local_head = head.load(std::memory_order_acquire);
         T item = buf[local_head];
 
-        local_head++;
-        if (local_head >= max_size) {
-            local_head = 0;
-        }
+        local_head = (local_head + 1) & (max_size - 1);
 
         head.store(local_head, std::memory_order_release);
 
@@ -98,6 +97,12 @@ public:
     }
 
     size_t read_ready(T *item, size_t size) {
+        if (size == 0 || item == nullptr || size > max_size) {
+            return 0;
+        }
+
+        size_t local_tail = load(tail, std::memory_order_acquire);
+
         if (size == 0 || item == nullptr) {
             return 0;
         }
@@ -142,8 +147,8 @@ public:
      *    data        free         data
      */
     size_t get_data_size() {
-        size_t local_head = load(head);
-        size_t local_tail = load(tail);
+        size_t local_head = load(head, std::memory_order_acquire);
+        size_t local_tail = load(tail, std::memory_order_acquire);
 
         return (local_tail - local_head) & (max_size - 1);
     }
@@ -156,7 +161,8 @@ public:
 
 private:
     template <typename varType>
-    size_t load(const varType &var, std::memory_order order = std::memory_order_relaxed) const {
+    constexpr size_t load(const varType &var,
+                          std::memory_order order = std::memory_order_relaxed) const {
         if constexpr (ThreadSafe) {
             return var.load(order);
         } else {
@@ -172,9 +178,9 @@ private:
      * @param order
      */
     template <typename varType>
-    void store(varType &var,
-               size_t value,
-               std::memory_order order = std::memory_order_relaxed) const {
+    constexpr void store(varType &var,
+                         size_t value,
+                         std::memory_order order = std::memory_order_relaxed) const {
         if constexpr (ThreadSafe) {
             var.store(value, order);
         } else {
