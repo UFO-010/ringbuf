@@ -8,11 +8,11 @@
 #include <cstring>
 
 template <typename T, size_t max_size, bool ThreadSafe>
-class spcs_ringbuf {
+class spsc_ringbuf {
     static_assert((max_size & (max_size - 1)) == 0, "max_size value should be power of 2");
 
 public:
-    explicit spcs_ringbuf() = default;
+    explicit spsc_ringbuf() = default;
 
     void reset() {
         store(head, 0);

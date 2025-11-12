@@ -5,7 +5,7 @@
 
 TEST(ringbuf_test, read_test) {
     constexpr size_t temp_size = 16;
-    spcs_ringbuf<char, temp_size, false> a;
+    spsc_ringbuf<char, temp_size, false> a;
     std::array<char, temp_size> out_buf = {};
     out_buf.fill(0);
 
@@ -21,15 +21,34 @@ TEST(ringbuf_test, read_test) {
     a.append("Hello world", read_num);
     readed = a.read_ready(out_buf.data(), read_num);
     EXPECT_EQ(readed, read_num);
-    //    std::cout << out_buf << "\n";
+
     ASSERT_THAT(out_buf, testing::ElementsAreArray("Hello world\0\0\0\0"));
+}
+
+TEST(ringbuf_test, size_test) {
+    constexpr size_t temp_size = 16;
+    spsc_ringbuf<char, temp_size, false> a;
+    std::array<char, temp_size> unused = {};
+    constexpr std::string_view st("Hello world", sizeof("Hello world"));
+    a.append(st.data(), st.size());
+
+    EXPECT_EQ(a.get_data_size(), st.size());
+    // Remember that we keep 1 character to check overflow
+    size_t free_size = a.capacity() - a.get_data_size() - 1;
+    EXPECT_EQ(free_size, a.get_free_size());
+
+    size_t readed = a.read_ready(unused.data(), st.size());
+    EXPECT_EQ(readed, st.size());
+
+    free_size = a.capacity() - a.get_data_size() - 1;
+    EXPECT_EQ(free_size, a.get_free_size());
 }
 
 TEST(ringbuf_test, overflow_test) {
     constexpr size_t temp_size = 16;
     // Remember that string_view doesn't guarantee null-terminated character
     constexpr std::string_view st("Hello world", sizeof("Hello world"));
-    spcs_ringbuf<char, temp_size, false> a;
+    spsc_ringbuf<char, temp_size, false> a;
     std::array<char, st.size()> out_buf = {};  // Remember '\0'
     out_buf.fill('\0');
 

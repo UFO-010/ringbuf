@@ -2,39 +2,75 @@
 #include <cstring>
 #include <thread>
 #include <gtest/gtest.h>
+#include <bit>
+#include <format>
 #include "ringbuf.hpp"
 
 /**
- * Test for thread-safety. Run with ThreadSanitizer - I don't know how to check thread-safety with
- * googletest automatically :(
+ * Test for thread-safety. Run with ThreadSanitizer (optional). One thread would write numbers in
+ * text buffer with delimeters. The other one would read data until writer is running. After all
+ * threads is done, we would split data by delimeters and check that numbers in not lost and placed
+ * in the rigth order. I put numbers into text just to make test more complicated and avoid using
+ * complex data types
  */
 
-void thread_producer(spcs_ringbuf<char, 512, true> &a) {
-    for (int i = 0; i < 1000; i++) {
-        std::array<char, 64> buf = {};
-        memset(buf.data(), '0', 64);
-        int n = snprintf(buf.data(), 64, "Consumer thread run Hello world %d\n", i);
-        a.append(buf.data(), n);
+constexpr size_t test_size = 1000;
+constexpr size_t max_len = 16;
+constexpr size_t buf_size = std::bit_ceil(test_size * 16);
+
+bool ended = false;
+
+void thread_producer(spsc_ringbuf<char, buf_size, true> &a) {
+    std::array<std::array<char, max_len>, test_size> test = {};
+    for (int i = 0; i < test.size(); i++) {
+        test.at(i).fill('\0');
+        auto result = std::format_to_n(test.at(i).data(), static_cast<long>(test.at(i).size()),
+                                       "test {}/", i);
+        a.append(test.at(i).data(), result.size);
         std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    ended = true;
+}
+
+void thread_consumer(spsc_ringbuf<char, buf_size, true> &a, std::array<char, buf_size> &out_buf) {
+    std::array<std::array<char, max_len>, test_size> test = {};
+    size_t s = 0;
+    while (!ended) {
+        s += a.read_ready(out_buf.data() + s, test_size);
     }
 }
 
-void thread_consumer(spcs_ringbuf<char, 512, true> &a) {
-    std::array<char, 512> out_buf = {};
-    for (int i = 0; i < 1000; i++) {
-        size_t s = a.read_ready(out_buf.data(), 512);
-        if (s > 0) {
-            memset(out_buf.data(), '\0', s);
-        }
-        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+std::vector<std::string> splitStringStream(const std::string &str, char delimiter) {
+    std::vector<std::string> tokens;
+    std::istringstream iss(str);
+    std::string token;
+    while (std::getline(iss, token, delimiter)) {
+        tokens.push_back(token);
     }
+    return tokens;
 }
 
 TEST(ringbuf_thread_test, thread_safe) {
-    spcs_ringbuf<char, 512, true> a;
-    auto thread1 = std::thread(&thread_producer, std::ref(a));
-    auto thread2 = std::thread(&thread_consumer, std::ref(a));
+    spsc_ringbuf<char, buf_size, true> a;
+    std::array<char, buf_size> out_buf = {};
+    out_buf.fill('\0');
+    {
+        auto thread1 = std::thread(&thread_producer, std::ref(a));
+        auto thread2 = std::thread(&thread_consumer, std::ref(a), std::ref(out_buf));
+        thread1.join();
+        thread2.join();
+    }
 
-    thread1.join();
-    thread2.join();
+    std::string temp_str;
+    temp_str.append(out_buf.data());
+
+    std::vector<std::string> test = splitStringStream(temp_str, '/');
+    EXPECT_EQ(test.size(), test_size);
+    for (size_t i = 0; i < test.size(); i++) {
+        std::vector<std::string> internal_test = splitStringStream(test.at(i), ' ');
+        EXPECT_EQ(internal_test.at(0), std::string("test"));
+        size_t value = std::stoi(internal_test.at(1));
+        EXPECT_EQ(i, value);
+    }
 }
