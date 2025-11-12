@@ -7,8 +7,6 @@
 #include <atomic>
 #include <cstring>
 
-#include <iostream>
-
 template <typename T, size_t max_size, bool ThreadSafe>
 class spsc_ringbuf {
     static_assert((max_size & (max_size - 1)) == 0, "max_size value should be power of 2");
@@ -101,12 +99,6 @@ public:
             return 0;
         }
 
-        size_t local_tail = load(tail, std::memory_order_acquire);
-
-        if (size == 0 || item == nullptr) {
-            return 0;
-        }
-
         size_t local_head = load(head, std::memory_order_acquire);
 
         size_t copy_size = buf_read(local_head, item, size);
@@ -147,8 +139,8 @@ public:
      *    data        free         data
      */
     size_t get_data_size() {
-        size_t local_head = load(head, std::memory_order_acquire);
-        size_t local_tail = load(tail, std::memory_order_acquire);
+        size_t local_head = load(head);
+        size_t local_tail = load(tail);
 
         return (local_tail - local_head) & (max_size - 1);
     }
