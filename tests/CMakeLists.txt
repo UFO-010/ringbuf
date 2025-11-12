@@ -16,12 +16,13 @@ find_package(Qt${QT_VERSION_MAJOR} COMPONENTS SerialPort REQUIRED)
 set(SOURCES
     "${CMAKE_CURRENT_LIST_DIR}/ringbuf_test.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/ringbuf_thread_safe_test.cpp"
-    "${CMAKE_CURRENT_LIST_DIR}/../ringbuf.hpp"
 )
+
+add_subdirectory(../ ringbuf)
 
 add_executable(${PROJECT_NAME} ${SOURCES})
 
-target_include_directories(${PROJECT_NAME} PUBLIC "${CMAKE_CURRENT_LIST_DIR}/../")
+find_library(ringbuf ringbuf PATH_SUFFIXES ringbuf)
 
 include(FetchContent)
 
@@ -36,6 +37,7 @@ FetchContent_MakeAvailable(googletest)
 target_link_libraries(${PROJECT_NAME} PRIVATE
 	gtest_main
         gmock_main
+        ringbuf
 )
 
 include(GoogleTest)

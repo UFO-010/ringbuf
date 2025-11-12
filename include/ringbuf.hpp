@@ -55,7 +55,7 @@ public:
         return copy_size;
     }
 
-    T get() {
+    T pop_front() {
         if (empty()) {
             return {};
         }
@@ -64,7 +64,6 @@ public:
         T item = buf[local_head];
 
         local_head = (local_head + 1) & (max_size - 1);
-
         head.store(local_head, std::memory_order_release);
 
         return item;
@@ -81,16 +80,14 @@ public:
             return 0;
         }
 
-        size = std::min(full_data_size, size);
+        size_t advance = std::min(full_data_size, size);
 
         size_t local_head = load(head, std::memory_order_acquire);
 
-        local_head += size;
-        if (local_head >= max_size) {
-            local_head -= max_size;
-        }
+        size_t new_head = (local_head + advance) & (max_size - 1);
 
-        store(head, local_head, std::memory_order_release);
+        store(head, new_head, std::memory_order_release);
+
         return size;
     }
 
@@ -150,6 +147,28 @@ public:
      * @return Number of free T elements in buffer
      */
     size_t get_free_size() { return max_size - 1 - get_data_size(); }
+
+    void advance_write_pointer(size_t advance) {
+        if (advance == 0) {
+            return;
+        }
+
+        size_t local_tail = load(tail, std::memory_order_acquire);
+        size_t new_tail = (local_tail + advance) & (max_size - 1);
+
+        store(tail, new_tail, std::memory_order_release);
+    }
+
+    void advance_read_pointer(size_t advance) {
+        if (advance == 0) {
+            return;
+        }
+
+        size_t local_head = load(head, std::memory_order_acquire);
+        size_t new_head = (local_head + advance) & (max_size - 1);
+
+        store(head, new_head, std::memory_order_release);
+    }
 
 private:
     template <typename varType>
