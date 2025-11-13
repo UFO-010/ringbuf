@@ -38,7 +38,7 @@ void thread_producer(spsc_ringbuf<char, spsc_size, true> &a, bool *ended) {
 
 void thread_consumer(spsc_ringbuf<char, spsc_size, true> &a,
                      std::array<char, buf_size> &out_buf,
-                     bool *ended) {
+                     const bool *ended) {
     size_t s = 0;
     while (!(*ended)) {
         s += a.read_ready(out_buf.data() + s, max_len);
