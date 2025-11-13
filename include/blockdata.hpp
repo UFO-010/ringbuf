@@ -4,21 +4,25 @@
 template <typename T>
 struct LinearBlock {
     T* ptr = nullptr;
-    size_t size = 0;
+    size_t b_size = 0;
 
-    bool empty() const noexcept { return size == 0 || ptr == nullptr; }
+    bool empty() const noexcept { return b_size == 0 || ptr == nullptr; }
+
+    T* data() const noexcept { return ptr; }
+
+    size_t size() const noexcept { return b_size; }
 
     /**
      * @brief end
      * @return pointer to the last element
      */
-    T* end() const noexcept { return ptr + size; }
+    T* end() const noexcept { return ptr + b_size; }
 
     /**
      * @brief bytes
      * @return size of buffer in bytes
      */
-    size_t bytes() const noexcept { return size * sizeof(T); }
+    size_t bytes() const noexcept { return b_size * sizeof(T); }
 };
 
 template <typename T>

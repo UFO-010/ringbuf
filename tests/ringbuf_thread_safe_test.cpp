@@ -16,15 +16,14 @@
 
 // Number of messages to be written
 constexpr size_t test_size = 1000;
+// Max length of message we would store
 constexpr size_t max_len = 16;
 // Remember that we need to store text itself
 constexpr size_t buf_size = std::bit_ceil(test_size * max_len);
 
 constexpr size_t spsc_size = std::bit_ceil(test_size);
 
-bool ended = false;
-
-void thread_producer(spsc_ringbuf<char, spsc_size, true> &a) {
+void thread_producer(spsc_ringbuf<char, spsc_size, true> &a, bool *ended) {
     std::array<std::array<char, max_len>, test_size> test = {};
     for (int i = 0; i < test.size(); i++) {
         test.at(i).fill('\0');
@@ -34,12 +33,14 @@ void thread_producer(spsc_ringbuf<char, spsc_size, true> &a) {
         std::this_thread::sleep_for(std::chrono::milliseconds(1));
     }
     std::this_thread::sleep_for(std::chrono::milliseconds(1));
-    ended = true;
+    *ended = true;
 }
 
-void thread_consumer(spsc_ringbuf<char, spsc_size, true> &a, std::array<char, buf_size> &out_buf) {
+void thread_consumer(spsc_ringbuf<char, spsc_size, true> &a,
+                     std::array<char, buf_size> &out_buf,
+                     bool *ended) {
     size_t s = 0;
-    while (!ended) {
+    while (!(*ended)) {
         s += a.read_ready(out_buf.data() + s, max_len);
     }
 }
@@ -57,10 +58,11 @@ std::vector<std::string> splitStringStream(const std::string &str, char delimite
 TEST(ringbuf_thread_test, thread_safe) {
     spsc_ringbuf<char, spsc_size, true> a;
     std::array<char, buf_size> out_buf = {};
+    bool ended = false;
     out_buf.fill('\0');
     {
-        auto thread1 = std::thread(&thread_producer, std::ref(a));
-        auto thread2 = std::thread(&thread_consumer, std::ref(a), std::ref(out_buf));
+        auto thread1 = std::thread(&thread_producer, std::ref(a), &ended);
+        auto thread2 = std::thread(&thread_consumer, std::ref(a), std::ref(out_buf), &ended);
         thread1.join();
         thread2.join();
     }

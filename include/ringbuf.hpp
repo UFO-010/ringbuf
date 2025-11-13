@@ -7,6 +7,8 @@
 #include <atomic>
 #include <cstring>
 
+#include "blockdata.hpp"
+
 template <typename T, size_t max_size, bool ThreadSafe>
 class spsc_ringbuf {
     static_assert((max_size & (max_size - 1)) == 0, "max_size value should be power of 2");
@@ -19,8 +21,16 @@ public:
         store(tail, 0);
     }
 
+    /**
+     * @brief size
+     * @return current number of data stored in buffer
+     */
     size_t size() const { return get_data_size(); }
 
+    /**
+     * @brief capacity
+     * @return size of data buffer can store
+     */
     size_t capacity() const { return max_size; }
 
     bool empty() const { return get_data_size() == 0; }
@@ -36,9 +46,11 @@ public:
 
         buf[local_tail] = item;
 
-        local_tail = (local_tail + 1) & (max_size - 1);
+        local_tail = (local_tail + 1) & mask;
 
         tail.store(local_tail, std::memory_order_release);
+
+        return true;
     }
 
     size_t append(const T *item, size_t size) {
@@ -49,7 +61,7 @@ public:
         size_t local_tail = load(tail, std::memory_order_acquire);
 
         size_t copy_size = buf_store(local_tail, item, size);
-        size_t new_tail = (local_tail + copy_size) & (max_size - 1);
+        size_t new_tail = (local_tail + copy_size) & mask;
 
         store(tail, new_tail, std::memory_order_release);
         return copy_size;
@@ -63,32 +75,10 @@ public:
         size_t local_head = head.load(std::memory_order_acquire);
         T item = buf[local_head];
 
-        local_head = (local_head + 1) & (max_size - 1);
+        local_head = (local_head + 1) & mask;
         head.store(local_head, std::memory_order_release);
 
         return item;
-    }
-
-    T peek() {
-        size_t head_local = head.load(std::memory_order_relaxed);
-        return buf[head_local];
-    }
-
-    size_t skip(size_t size) {
-        size_t full_data_size = get_data_size();
-        if (full_data_size == 0) {
-            return 0;
-        }
-
-        size_t advance = std::min(full_data_size, size);
-
-        size_t local_head = load(head, std::memory_order_acquire);
-
-        size_t new_head = (local_head + advance) & (max_size - 1);
-
-        store(head, new_head, std::memory_order_release);
-
-        return size;
     }
 
     size_t read_ready(T *item, size_t size) {
@@ -99,11 +89,16 @@ public:
         size_t local_head = load(head, std::memory_order_acquire);
 
         size_t copy_size = buf_read(local_head, item, size);
-        size_t new_head = (local_head + copy_size) & (max_size - 1);
+        size_t new_head = (local_head + copy_size) & mask;
 
         store(head, new_head, std::memory_order_release);
 
         return copy_size;
+    }
+
+    T peek() {
+        size_t head_local = head.load(std::memory_order_relaxed);
+        return buf[head_local];
     }
 
     size_t peek_ready(T *item, size_t size) {
@@ -111,12 +106,12 @@ public:
             return 0;
         }
 
-        size_t full_data_size = get_data_size();
+        size_t local_head = load(head, std::memory_order_acquire);
+
+        size_t full_data_size = get_data_size(local_head);
         if (full_data_size == 0) {
             return 0;
         }
-
-        size_t local_head = load(head, std::memory_order_relaxed);
 
         size_t copy_size = buf_read(local_head, item, size);
 
@@ -136,10 +131,15 @@ public:
      *    data        free         data
      */
     size_t get_data_size() {
-        size_t local_head = load(head);
-        size_t local_tail = load(tail);
+        size_t local_head = load(head, std::memory_order_relaxed);
+        size_t local_tail = load(tail, std::memory_order_relaxed);
 
-        return (local_tail - local_head) & (max_size - 1);
+        return (local_tail - local_head) & mask;
+    }
+
+    size_t get_data_size(size_t local_head) {
+        size_t local_tail = load(tail, std::memory_order_relaxed);
+        return (local_tail - local_head) & mask;
     }
 
     /**
@@ -148,13 +148,19 @@ public:
      */
     size_t get_free_size() { return max_size - 1 - get_data_size(); }
 
+    size_t get_free_size(size_t local_tail) {
+        size_t local_head = load(head, std::memory_order_relaxed);
+
+        return max_size - 1 - ((local_tail - local_head) & mask);
+    }
+
     void advance_write_pointer(size_t advance) {
         if (advance == 0) {
             return;
         }
 
         size_t local_tail = load(tail, std::memory_order_acquire);
-        size_t new_tail = (local_tail + advance) & (max_size - 1);
+        size_t new_tail = (local_tail + advance) & mask;
 
         store(tail, new_tail, std::memory_order_release);
     }
@@ -165,9 +171,41 @@ public:
         }
 
         size_t local_head = load(head, std::memory_order_acquire);
-        size_t new_head = (local_head + advance) & (max_size - 1);
+        size_t new_head = (local_head + advance) & mask;
 
         store(head, new_head, std::memory_order_release);
+    }
+
+    LinearBlock<T> get_write_linear_block_single() {
+        size_t local_head = load(head, std::memory_order_relaxed);
+        size_t local_tail = load(tail, std::memory_order_acquire);
+
+        size_t free_space = (local_head - local_tail - 1) & mask;
+
+        if (free_space == 0) {
+            return {nullptr, 0};
+        }
+
+        size_t block_size = std::min(free_space, capacity() - local_tail);
+        T *block_ptr = buf.data() + local_tail;
+
+        return {block_ptr, block_size};
+    }
+
+    LinearBlock<T> get_read_linear_block_single() {
+        size_t local_head = load(head, std::memory_order_acquire);
+        size_t local_tail = load(tail, std::memory_order_relaxed);
+
+        size_t data_size = (local_tail - local_head) & mask;
+
+        if (data_size == 0) {
+            return {nullptr, 0};
+        }
+
+        size_t block_size = std::min(data_size, capacity() - local_head);
+        T *block_ptr = buf.data() + local_head;
+
+        return {block_ptr, block_size};
     }
 
 private:
@@ -201,7 +239,7 @@ private:
     }
 
     size_t buf_store(const size_t local_tail, const T *item, size_t size) {
-        size_t free_data_size = get_free_size();
+        size_t free_data_size = get_free_size(local_tail);
         if (free_data_size == 0) {
             return 0;
         }
@@ -233,7 +271,7 @@ private:
     }
 
     size_t buf_read(const size_t local_head, T *item, const size_t size) {
-        size_t full_data_size = get_data_size();
+        size_t full_data_size = get_data_size(local_head);
         if (full_data_size == 0) {
             return 0;
         }
@@ -266,8 +304,12 @@ private:
 
     std::array<T, max_size> buf;
 
+    /// Conditional type of head and tail. Atomic if ThreadSafe is true.
     using atomic_size = std::conditional_t<ThreadSafe, std::atomic<size_t>, size_t>;
+    /// Data alignment of head and tail
     constexpr static int al = 64;
+    /// Bitmask we use to check buffer overflow
+    constexpr static size_t mask = (max_size - 1);
 
     alignas(al) atomic_size head = 0;
     alignas(al) atomic_size tail = 0;
