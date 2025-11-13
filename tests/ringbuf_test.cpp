@@ -3,13 +3,31 @@
 #include <gmock/gmock.h>
 #include "ringbuf.hpp"
 
+TEST(ringbuf_test, zero_test) {
+    constexpr size_t temp_size = 16;
+    constexpr size_t temp = 5;
+
+    spsc_ringbuf<char, temp_size, false> a;
+    EXPECT_EQ(a.append(nullptr, temp), 0);
+
+    std::array<char, temp> t = {};
+    EXPECT_EQ(a.append(t.data(), 0), 0);
+
+    EXPECT_EQ(a.read_ready(nullptr, 5), 0);
+
+    a.reset();
+    a.append(t.data(), t.size());
+    EXPECT_EQ(a.read_ready(t.data(), 0), 0);
+}
+
 TEST(ringbuf_test, read_test) {
     constexpr size_t temp_size = 16;
-    spsc_ringbuf<char, temp_size, false> a;
     std::array<char, temp_size> out_buf = {};
     out_buf.fill(0);
 
     size_t read_num = sizeof("00000000000");
+
+    spsc_ringbuf<char, temp_size, false> a;
 
     a.append("00000000000", read_num);
     std::array<char, temp_size> unused = {};
@@ -29,8 +47,10 @@ TEST(ringbuf_test, read_test) {
 TEST(ringbuf_test, size_test) {
     constexpr size_t temp_size = 16;
     spsc_ringbuf<char, temp_size, false> a;
+
     std::array<char, temp_size> unused = {};
     constexpr std::string_view st("Hello world", sizeof("Hello world"));
+
     a.append(st.data(), st.size());
 
     EXPECT_EQ(a.get_data_size(), st.size());
@@ -79,11 +99,13 @@ TEST(ringbuf_test, size_test) {
 
 TEST(ringbuf_test, overflow_test) {
     constexpr size_t temp_size = 16;
+
     // Remember that string_view doesn't guarantee null-terminated character
     constexpr std::string_view st("Hello world", sizeof("Hello world"));
-    spsc_ringbuf<char, temp_size, false> a;
-    std::array<char, st.size()> out_buf = {};  // Remember '\0'
+    std::array<char, st.size()> out_buf = {};
     out_buf.fill('\0');
+
+    spsc_ringbuf<char, temp_size, false> a;
 
     a.append(st.data(), st.size());
 
@@ -91,12 +113,15 @@ TEST(ringbuf_test, overflow_test) {
     ASSERT_THAT(out_buf, testing::ElementsAreArray(st));
 
     a.append("Hello", sizeof("Hello"));
+
     std::array<char, sizeof("Hello")> new_buf = {};  // Remember '\0'
     out_buf.fill('\0');
+
     a.read_ready(new_buf.data(), sizeof("Hello"));
     ASSERT_THAT(new_buf, testing::ElementsAreArray("Hello"));
 
     a.reset();
+
     out_buf.fill('\0');
     a.append("Hello world", st.size());
     a.append("world Hello", st.size());
