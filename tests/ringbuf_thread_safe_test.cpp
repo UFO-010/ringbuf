@@ -23,25 +23,25 @@ constexpr size_t buf_size = std::bit_ceil(test_size * max_len);
 
 constexpr size_t spsc_size = std::bit_ceil(test_size);
 
-void thread_producer(spsc_ringbuf<char, spsc_size, true> &a, bool *ended) {
+void thread_producer(spsc_ringbuf<char, spsc_size, true> &rb, bool *ended) {
     std::array<std::array<char, max_len>, test_size> test = {};
     for (int i = 0; i < test.size(); i++) {
         test.at(i).fill('\0');
         auto result = std::format_to_n(test.at(i).data(), static_cast<long>(test.at(i).size()),
                                        "test {}/", i);
-        a.append(test.at(i).data(), result.size);
+        rb.append(test.at(i).data(), result.size);
         std::this_thread::sleep_for(std::chrono::milliseconds(1));
     }
     std::this_thread::sleep_for(std::chrono::milliseconds(1));
     *ended = true;
 }
 
-void thread_consumer(spsc_ringbuf<char, spsc_size, true> &a,
+void thread_consumer(spsc_ringbuf<char, spsc_size, true> &rb,
                      std::array<char, buf_size> &out_buf,
                      const bool *ended) {
     size_t s = 0;
     while (!(*ended)) {
-        s += a.read_ready(out_buf.data() + s, max_len);
+        s += rb.read_ready(out_buf.data() + s, max_len);
     }
 }
 
@@ -56,13 +56,13 @@ std::vector<std::string> splitStringStream(const std::string &str, char delimite
 }
 
 TEST(ringbuf_thread_test, thread_safe) {
-    spsc_ringbuf<char, spsc_size, true> a;
+    spsc_ringbuf<char, spsc_size, true> rb;
     std::array<char, buf_size> out_buf = {};
     bool ended = false;
     out_buf.fill('\0');
     {
-        auto thread1 = std::thread(&thread_producer, std::ref(a), &ended);
-        auto thread2 = std::thread(&thread_consumer, std::ref(a), std::ref(out_buf), &ended);
+        auto thread1 = std::thread(&thread_producer, std::ref(rb), &ended);
+        auto thread2 = std::thread(&thread_consumer, std::ref(rb), std::ref(out_buf), &ended);
         thread1.join();
         thread2.join();
     }
