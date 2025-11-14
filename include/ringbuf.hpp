@@ -60,7 +60,7 @@ public:
 
         size_t local_tail = load(tail, std::memory_order_acquire);
 
-        buf[local_tail] = std::forward<T>(item);
+        buf[local_tail] = std::move(item);
 
         local_tail = (local_tail + 1) & mask;
 

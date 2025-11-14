@@ -190,6 +190,12 @@ TEST(ringbuf_test, block_test) {
     EXPECT_EQ(bl.data(), nullptr);
 }
 
+class NonTrivial {
+private:
+    std::vector<int> name;
+    // std::array<char, 5> s;
+};
+
 TEST(ringbuf_test, push_pop_test) {
     constexpr size_t temp_size = 8;
     const char test_ch = 'H';
@@ -213,4 +219,9 @@ TEST(ringbuf_test, push_pop_test) {
     a.advance_read_pointer(a.capacity());
     EXPECT_EQ(a.pop_front(test), false);
     EXPECT_EQ(a.pop_front(), {});
+
+    if (std::is_trivially_copyable_v<NonTrivial>) {
+        int gggdg = 0;
+    }
+    int fbzfb = 0;
 }
