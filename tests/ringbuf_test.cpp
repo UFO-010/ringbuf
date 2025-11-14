@@ -189,3 +189,28 @@ TEST(ringbuf_test, block_test) {
     EXPECT_EQ(bl.size(), 0);
     EXPECT_EQ(bl.data(), nullptr);
 }
+
+TEST(ringbuf_test, push_pop_test) {
+    constexpr size_t temp_size = 8;
+    const char test_ch = 'H';
+
+    spsc_ringbuf<char, temp_size, false> a;
+
+    a.push_back(test_ch);
+    char test = 0;
+    a.pop_front(test);
+    EXPECT_EQ(test, test_ch);
+
+    a.push_back(test_ch);
+    test = a.pop_front();
+    EXPECT_EQ(test, test_ch);
+
+    a.reset();
+    a.advance_write_pointer(a.capacity() - 1);
+    EXPECT_EQ(a.push_back(test_ch), false);
+
+    a.reset();
+    a.advance_read_pointer(a.capacity());
+    EXPECT_EQ(a.pop_front(test), false);
+    EXPECT_EQ(a.pop_front(), {});
+}
