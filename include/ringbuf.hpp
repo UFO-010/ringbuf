@@ -88,7 +88,7 @@ public:
             return {};
         }
 
-        size_t local_head = head.load(std::memory_order_acquire);
+        size_t local_head = load(head, std::memory_order_acquire);
         T item = std::move(buf[local_head]);
 
         local_head = (local_head + 1) & mask;
@@ -102,7 +102,7 @@ public:
             return false;
         }
 
-        size_t local_head = head.load(std::memory_order_acquire);
+        size_t local_head = load(head, std::memory_order_acquire);
         dest = std::move(buf[local_head]);
 
         local_head = (local_head + 1) & mask;
