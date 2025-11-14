@@ -225,4 +225,14 @@ TEST(ringbuf_test, push_pop_test) {
     std::string str;
     st_rb.pop_front(str);
     EXPECT_EQ(str, st_test);
+
+    st_rb.reset();
+    std::array<std::string, temp_size> st_ar;
+    st_test = "Hello";
+    st_rb.push_back(st_test);
+    st_test = " world";
+    st_rb.push_back(st_test);
+    st_rb.read_ready(st_ar.data(), st_ar.size());
+    st_test = st_ar.at(0) + st_ar.at(1);
+    EXPECT_EQ(st_test, "Hello world");
 }
