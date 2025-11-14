@@ -189,3 +189,11 @@ TEST(ringbuf_test, block_test) {
     EXPECT_EQ(bl.size(), 0);
     EXPECT_EQ(bl.data(), nullptr);
 }
+
+TEST(ringbuf_test, push_pop_test) {
+    constexpr size_t temp_size = 8;
+
+    spsc_ringbuf<char, temp_size, false> a;
+
+    a.push_back('H');
+}

@@ -48,7 +48,7 @@ public:
 
         local_tail = (local_tail + 1) & mask;
 
-        tail.store(local_tail, std::memory_order_release);
+        store(tail, local_tail, std::memory_order_release);
 
         return true;
     }
@@ -64,7 +64,7 @@ public:
 
         local_tail = (local_tail + 1) & mask;
 
-        tail.store(local_tail, std::memory_order_release);
+        store(tail, local_tail, std::memory_order_release);
 
         return true;
     }
@@ -160,14 +160,14 @@ public:
      * ========|----------------|========
      *    data        free         data
      */
-    size_t get_data_size() {
+    size_t get_data_size() const {
         size_t local_head = load(head, std::memory_order_relaxed);
         size_t local_tail = load(tail, std::memory_order_relaxed);
 
         return (local_tail - local_head) & mask;
     }
 
-    size_t get_data_size(size_t local_head) {
+    size_t get_data_size(size_t local_head) const {
         size_t local_tail = load(tail, std::memory_order_relaxed);
         return (local_tail - local_head) & mask;
     }
@@ -176,9 +176,9 @@ public:
      * @brief get_free
      * @return Number of free T elements in buffer
      */
-    size_t get_free_size() { return max_size - 1 - get_data_size(); }
+    size_t get_free_size() const { return max_size - 1 - get_data_size(); }
 
-    size_t get_free_size(size_t local_tail) {
+    size_t get_free_size(size_t local_tail) const {
         size_t local_head = load(head, std::memory_order_relaxed);
 
         return max_size - 1 - ((local_tail - local_head) & mask);
@@ -332,7 +332,7 @@ private:
         return copy_size;
     }
 
-    std::array<T, max_size> buf;
+    std::array<T, max_size> buf = {};
 
     /// Conditional type of head and tail. Atomic if ThreadSafe is true.
     using atomic_size = std::conditional_t<ThreadSafe, std::atomic<size_t>, size_t>;
