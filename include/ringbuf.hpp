@@ -53,6 +53,22 @@ public:
         return true;
     }
 
+    bool push_back(T &&item) {
+        if (full()) {
+            return false;
+        }
+
+        size_t local_tail = load(tail, std::memory_order_acquire);
+
+        buf[local_tail] = std::forward<T>(item);
+
+        local_tail = (local_tail + 1) & mask;
+
+        tail.store(local_tail, std::memory_order_release);
+
+        return true;
+    }
+
     size_t append(const T *item, size_t size) {
         if (size == 0 || item == nullptr) {
             return 0;
@@ -73,12 +89,26 @@ public:
         }
 
         size_t local_head = head.load(std::memory_order_acquire);
-        T item = buf[local_head];
+        T item = std::move(buf[local_head]);
 
         local_head = (local_head + 1) & mask;
-        head.store(local_head, std::memory_order_release);
+        store(head, local_head, std::memory_order_release);
 
         return item;
+    }
+
+    bool pop_front(T &dest) {
+        if (empty()) {
+            return false;
+        }
+
+        size_t local_head = head.load(std::memory_order_acquire);
+        dest = std::move(buf[local_head]);
+
+        local_head = (local_head + 1) & mask;
+        store(head, local_head, std::memory_order_release);
+
+        return true;
     }
 
     size_t read_ready(T *item, size_t size) {
@@ -97,7 +127,7 @@ public:
     }
 
     T peek() {
-        size_t head_local = head.load(std::memory_order_relaxed);
+        size_t head_local = load(head, std::memory_order_relaxed);
         return buf[head_local];
     }
 
@@ -252,7 +282,7 @@ private:
         if constexpr (std::is_trivially_copyable_v<T>) {
             std::memcpy(buf.data() + local_tail, data_ptr, first_part * sizeof(T));
         } else {
-            std::copy_n(data_ptr, first_part, buf.get() + local_tail);
+            std::copy_n(data_ptr, first_part, buf.data() + local_tail);
         }
         data_ptr += first_part;
 
