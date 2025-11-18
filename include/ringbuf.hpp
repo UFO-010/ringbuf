@@ -207,10 +207,9 @@ public:
     }
 
     LinearBlock<T> get_write_linear_block_single() {
-        size_t local_head = load(head, std::memory_order_relaxed);
         size_t local_tail = load(tail, std::memory_order_acquire);
 
-        size_t free_space = (local_head - local_tail - 1) & mask;
+        size_t free_space = get_free_size(local_tail);
 
         if (free_space == 0) {
             return {nullptr, 0};
@@ -224,9 +223,8 @@ public:
 
     LinearBlock<T> get_read_linear_block_single() {
         size_t local_head = load(head, std::memory_order_acquire);
-        size_t local_tail = load(tail, std::memory_order_relaxed);
 
-        size_t data_size = (local_tail - local_head) & mask;
+        size_t data_size = get_data_size(local_head);
 
         if (data_size == 0) {
             return {nullptr, 0};
