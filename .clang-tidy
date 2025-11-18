@@ -1,0 +1,15 @@
+Checks:
+  bugprone-implicit-widening-of-multiplication-result,
+  bugprone-narrowing-conversions,
+  bugprone-sizeof-*,
+  bugprone-suspicious-*,
+  bugprone-use-after-move,
+  clang-*,
+  cppcoreguidelines-*,
+  portability-*,
+  readability-delete-null-pointer,
+  readability-duplicate-include,
+  readability-implicit-bool-conversion,
+  readability-redundant-*,
+  readability-simplify-*,
+  readability-static-*
