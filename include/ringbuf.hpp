@@ -238,6 +238,52 @@ public:
         return {block_ptr, block_size};
     }
 
+    BufferSegments<T> get_write_segments() {
+        size_t local_tail = load(tail, std::memory_order_acquire);
+
+        size_t free_space = get_free_size(local_tail);
+
+        if (free_space == 0) {
+            return {{nullptr, 0}, {nullptr, 0}};
+        }
+
+        size_t first_size = std::min(free_space, max_size - local_tail);
+        T *first_ptr = buf.data() + local_tail;
+        LinearBlock<T> first_block = {first_ptr, first_size};
+
+        LinearBlock<T> second_block = {nullptr, 0};
+        size_t second_size = free_space - first_size;
+
+        if (second_size > 0) {
+            second_block = {buf.data(), second_size};
+        }
+
+        return {first_block, second_block};
+    }
+
+    BufferSegments<T> get_read_segments() {
+        size_t local_head = load(head, std::memory_order_acquire);
+        size_t data_size = get_data_size(local_head);
+
+        if (data_size == 0) {
+            return {{nullptr, 0}, {nullptr, 0}};
+        }
+
+        size_t first_size = std::min(data_size, max_size - local_head);
+
+        T *first_ptr = buf.data() + local_head;
+        LinearBlock<T> first_block = {first_ptr, first_size};
+
+        LinearBlock<T> second_block = {nullptr, 0};
+        size_t second_size = data_size - first_size;
+
+        if (second_size > 0) {
+            second_block = {buf.data(), second_size};
+        }
+
+        return {first_block, second_block};
+    }
+
 private:
     template <typename varType>
     constexpr size_t load(const varType &var,
