@@ -185,7 +185,7 @@ public:
     }
 
     void advance_write_pointer(size_t advance) {
-        if (advance == 0) {
+        if (advance == 0 || full()) {
             return;
         }
 
@@ -196,7 +196,7 @@ public:
     }
 
     void advance_read_pointer(size_t advance) {
-        if (advance == 0) {
+        if (advance == 0 || empty()) {
             return;
         }
 

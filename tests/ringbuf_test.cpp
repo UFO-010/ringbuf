@@ -72,17 +72,17 @@ TEST(ringbuf_test, size_test) {
     EXPECT_EQ(skipped, skip);
 
     rb.reset();
-    rb.advance_read_pointer(skip);
+    rb.advance_write_pointer(temp_size - skip);
     skipped = rb.get_free_size();
     EXPECT_EQ(skipped, skip - 1);
 
-    // do overflow
+    // Do overflow
     rb.reset();
     rb.advance_write_pointer(temp_size);
     skipped = rb.get_data_size();
     EXPECT_EQ(skipped, 0);
 
-    // skip to the end
+    // Skip to the end
     rb.reset();
     rb.advance_write_pointer(temp_size - 1);
     skipped = rb.get_data_size();
@@ -91,13 +91,44 @@ TEST(ringbuf_test, size_test) {
     rb.reset();
     rb.advance_read_pointer(temp_size - 1);
     skipped = rb.get_free_size();
-    EXPECT_EQ(skipped, temp_size - 2);
+    EXPECT_EQ(skipped, temp_size - 1);
 
-    // skip head to the end, free size should be (capacity - 1)
+    // Skip head to the end, free size should be (capacity - 1)
     rb.reset();
     rb.advance_read_pointer(temp_size);
     skipped = rb.get_free_size();
     EXPECT_EQ(skipped, temp_size - 1);
+}
+
+TEST(ringbuf_test, advance_pointers_test) {
+    constexpr size_t temp_size = 4;
+    spsc_ringbuf<int, temp_size, false> rb;
+
+    rb.advance_write_pointer(0);
+    rb.advance_read_pointer(0);
+    EXPECT_EQ(rb.get_data_size(), 0);
+    EXPECT_EQ(rb.get_free_size(), temp_size - 1);
+
+    // Fill buffer to capacity
+    for (size_t i = 0; i < temp_size - 1; ++i) {
+        rb.push_back(static_cast<int>(i));
+    }
+    EXPECT_EQ(rb.get_data_size(), temp_size - 1);
+    EXPECT_EQ(rb.get_free_size(), 0);
+    EXPECT_TRUE(rb.full());
+
+    // Try advance when full
+    rb.advance_write_pointer(1);
+    EXPECT_EQ(rb.get_data_size(), temp_size - 1);
+    EXPECT_EQ(rb.get_free_size(), 0);
+
+    rb.reset();
+    rb.push_back(1);
+    rb.push_back(2);
+    EXPECT_EQ(rb.get_data_size(), 2);
+
+    rb.advance_read_pointer(1);
+    EXPECT_EQ(rb.get_data_size(), 1);
 }
 
 TEST(ringbuf_test, overflow_test) {
@@ -161,7 +192,7 @@ TEST(ringbuf_test, linear_block_test) {
     EXPECT_NE(bl.data(), nullptr);
 
     rb.reset();
-    rb.advance_read_pointer(skip);
+    rb.advance_write_pointer(temp_size - skip);
     bl = rb.get_write_linear_block_single();
     EXPECT_EQ(bl.size(), skip - 1);
     EXPECT_NE(bl.data(), nullptr);
@@ -179,7 +210,7 @@ TEST(ringbuf_test, linear_block_test) {
     EXPECT_NE(bl.data(), nullptr);
 
     rb.reset();
-    rb.advance_read_pointer(skip);
+    rb.advance_write_pointer(temp_size - skip);
     bl = rb.get_read_linear_block_single();
     EXPECT_EQ(bl.size(), temp_size - skip);
     EXPECT_NE(bl.data(), nullptr);
