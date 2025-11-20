@@ -240,7 +240,28 @@ TEST(ringbuf_test, push_pop_test) {
     st_rb.push_back(st_test);
     st_test = " world";
     st_rb.push_back(st_test);
+    // Read only 2 items
     st_rb.read_ready(st_ar.data(), st_ar.size());
     st_test = st_ar.at(0) + st_ar.at(1);
     EXPECT_EQ(st_test, "Hello world");
+}
+
+TEST(ringbuf_test, move_semantics) {
+    constexpr size_t temp_size = 4;
+    spsc_ringbuf<std::string, temp_size, false> rb;
+
+    std::string original = "This is a long string that might trigger move semantics";
+    // Keep a copy to check original is moved from
+    std::string original_copy = original;
+
+    rb.push_back(std::move(original));
+    // Original should be moved from (empty string is common result)
+    // NOLINTNEXTLINE
+    EXPECT_EQ(original, "");
+    EXPECT_FALSE(rb.empty());
+
+    std::string retrieved = rb.pop_front();
+    // Retrieved should be the original content
+    EXPECT_EQ(retrieved, original_copy);
+    EXPECT_TRUE(rb.empty());
 }
