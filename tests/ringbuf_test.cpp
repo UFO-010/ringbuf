@@ -256,8 +256,10 @@ TEST(ringbuf_test, move_semantics) {
 
     rb.push_back(std::move(original));
     // Original should be moved from (empty string is common result)
+    // clang-format off
     // NOLINTNEXTLINE
-    EXPECT_EQ(original, "");
+    EXPECT_EQ(original, ""); //NOSONAR
+    // clang-format on
     EXPECT_FALSE(rb.empty());
 
     std::string retrieved = rb.pop_front();
