@@ -93,6 +93,7 @@ TEST(ringbuf_test, size_test) {
     skipped = rb.get_free_size();
     EXPECT_EQ(skipped, temp_size - 2);
 
+    // skip head to the end, free size should be (capacity - 1)
     rb.reset();
     rb.advance_read_pointer(temp_size);
     skipped = rb.get_free_size();
@@ -128,7 +129,10 @@ TEST(ringbuf_test, overflow_test) {
     rb.append("Hello world", st.size());
     rb.append("world Hello", st.size());
     rb.read_ready(out_buf.data(), out_buf.size());
-    ASSERT_THAT(out_buf, testing::ElementsAreArray("Hello world"));
+
+    std::array<char, st.size()> expected_overwrite = {};
+    std::copy_n("Hello world", st.size(), expected_overwrite.begin());
+    ASSERT_THAT(out_buf, testing::ElementsAreArray(expected_overwrite));
 
     // We should be able to read and write at least ringbuf capacity
     rb.reset();
@@ -214,6 +218,8 @@ TEST(ringbuf_test, push_pop_test) {
     rb.reset();
     rb.advance_read_pointer(rb.capacity());
     EXPECT_EQ(rb.pop_front(test), false);
+    rb.push_back('A');
+    EXPECT_EQ(rb.pop_front(), 'A');
     EXPECT_EQ(rb.pop_front(), {});
 
     spsc_ringbuf<std::string, temp_size, false> st_rb;
