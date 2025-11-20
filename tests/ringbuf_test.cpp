@@ -40,7 +40,9 @@ TEST(ringbuf_test, read_test) {
     readed = rb.read_ready(out_buf.data(), read_num);
     EXPECT_EQ(readed, read_num);
 
-    ASSERT_THAT(out_buf, testing::ElementsAreArray("Hello world\0\0\0\0"));
+    std::array<char, temp_size> expected = {};
+    std::copy_n("Hello world", read_num, expected.begin());
+    ASSERT_THAT(out_buf, testing::ElementsAreArray(expected));
 }
 
 // Remember that we keep 1 character to check overflow
@@ -139,7 +141,7 @@ TEST(ringbuf_test, overflow_test) {
     EXPECT_EQ(readed, rb.capacity() - 1);
 }
 
-TEST(ringbuf_test, block_test) {
+TEST(ringbuf_test, linear_block_test) {
     constexpr size_t temp_size = 16;
     constexpr size_t skip = 5;
 

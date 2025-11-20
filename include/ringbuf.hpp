@@ -126,7 +126,7 @@ public:
         return copy_size;
     }
 
-    T peek() {
+    T peek() const {
         size_t head_local = load(head, std::memory_order_relaxed);
         return buf[head_local];
     }
