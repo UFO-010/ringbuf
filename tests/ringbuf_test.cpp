@@ -129,6 +129,15 @@ TEST(ringbuf_test, advance_pointers_test) {
 
     rb.advance_read_pointer(1);
     EXPECT_EQ(rb.get_data_size(), 1);
+
+    rb.advance_read_pointer(1);
+    EXPECT_EQ(rb.get_data_size(), 0);
+    EXPECT_TRUE(rb.empty());
+
+    // Advance read to data, data should be zero
+    rb.advance_read_pointer(2);
+    EXPECT_EQ(rb.get_data_size(), 0);
+    EXPECT_EQ(rb.get_free_size(), temp_size - 1);
 }
 
 TEST(ringbuf_test, overflow_test) {
@@ -225,6 +234,27 @@ TEST(ringbuf_test, linear_block_test) {
     bl = rb.get_read_linear_block_single();
     EXPECT_EQ(bl.size(), 0);
     EXPECT_EQ(bl.data(), nullptr);
+}
+
+TEST(ringbuf_test, block_test) {
+    constexpr size_t temp_size = 8;
+    spsc_ringbuf<int, temp_size, false> rb;
+    const int skip = 3;
+
+    for (int i = 0; i < skip; ++i) {
+        rb.push_back(i);
+    }
+
+    auto read_blocks = rb.get_read_segments();
+    EXPECT_TRUE(read_blocks.is_linear());
+    EXPECT_EQ(read_blocks.first.size(), skip);
+    EXPECT_EQ(read_blocks.second.size(), 0);
+    EXPECT_EQ(read_blocks.total_size(), skip);
+
+    auto write_blocks = rb.get_write_segments();
+    EXPECT_TRUE(write_blocks.is_linear());
+    EXPECT_EQ(write_blocks.first.size(), temp_size - 1 - skip);
+    EXPECT_EQ(write_blocks.second.size(), 0);
 }
 
 TEST(ringbuf_test, push_pop_test) {

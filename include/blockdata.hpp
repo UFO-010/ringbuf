@@ -30,7 +30,7 @@ struct BufferSegments {
     LinearBlock<T> first;
     LinearBlock<T> second;
 
-    size_t total_size() const noexcept { return first.size + second.size; }
+    size_t total_size() const noexcept { return first.size() + second.size(); }
 
     bool empty() const noexcept { return first.empty() && second.empty(); }
 
