@@ -260,11 +260,58 @@ TEST(ringbuf_test, block_test) {
     EXPECT_EQ(read_blocks.first.size(), skip);
     EXPECT_EQ(read_blocks.second.size(), 0);
     EXPECT_EQ(read_blocks.total_size(), skip);
+    for (int i = 0; i < skip; i++) {
+        // clang-format off
+        // NOLINTNEXTLINE
+        EXPECT_EQ(*(read_blocks.first.data() + i), i); //NOSONAR
+        // clang-format on
+    }
 
     auto write_blocks = rb.get_write_segments();
     EXPECT_TRUE(write_blocks.is_linear());
     EXPECT_EQ(write_blocks.first.size(), temp_size - 1 - skip);
     EXPECT_EQ(write_blocks.second.size(), 0);
+
+    // Do overflow, so data wrap around
+    rb.reset();
+    rb.advance_write_pointer(temp_size - skip);
+    rb.advance_read_pointer(temp_size - skip);
+
+    const int over_skip = skip + 4;
+
+    for (int i = 0; i < over_skip; i++) {
+        rb.push_back(i);
+    }
+
+    read_blocks = rb.get_read_segments();
+    EXPECT_FALSE(read_blocks.is_linear());
+    EXPECT_EQ(read_blocks.total_size(), over_skip);
+    EXPECT_EQ(read_blocks.total_bytes(), over_skip * sizeof(int));
+    EXPECT_FALSE(read_blocks.empty());
+
+    const int first_expected = temp_size - skip - 2;
+    const int second_expected = over_skip - first_expected;
+    EXPECT_EQ(read_blocks.first.size(), first_expected);
+    EXPECT_NE(read_blocks.first.data(), nullptr);
+    EXPECT_EQ(read_blocks.second.size(), second_expected);
+    EXPECT_NE(read_blocks.second.data(), nullptr);
+
+    for (int i = 0; i < read_blocks.first.size(); i++) {
+        // clang-format off
+        // NOLINTNEXTLINE
+        EXPECT_EQ(*(read_blocks.first.data() + i), i); //NOSONAR
+        // clang-format on
+    }
+
+    for (int i = 0; i < read_blocks.second.size(); i++) {
+        // clang-format off
+        // NOLINTNEXTLINE
+        EXPECT_EQ(*(read_blocks.second.data() + i), i + read_blocks.first.size()); //NOSONAR
+        // clang-format on
+    }
+
+    write_blocks = rb.get_write_segments();
+    EXPECT_TRUE(write_blocks.is_linear());
 }
 
 TEST(ringbuf_test, push_pop_test) {
