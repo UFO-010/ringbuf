@@ -1,4 +1,4 @@
-CMAKE_MINIMUM_REQUIRED(VERSION 3.18.0)
+CMAKE_MINIMUM_REQUIRED(VERSION 3.15.0)
 enable_testing()
 
 set(CMAKE_INCLUDE_CURRENT_DIR ON)
@@ -7,10 +7,6 @@ project(spsc_test LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
-
-find_package(QT NAMES Qt5 Qt6 COMPONENTS Core SerialPort REQUIRED)
-find_package(Qt${QT_VERSION_MAJOR} COMPONENTS Core REQUIRED)
-find_package(Qt${QT_VERSION_MAJOR} COMPONENTS SerialPort REQUIRED)
 
 
 set(SOURCES
@@ -35,17 +31,15 @@ FetchContent_Declare(
 FetchContent_MakeAvailable(googletest)
 
 target_link_libraries(${PROJECT_NAME} PRIVATE
-	gtest_main
-        gmock_main
-        ringbuf
+    gtest_main
+    gmock_main
+    ringbuf
 )
 
 include(GoogleTest)
 gtest_discover_tests(${PROJECT_NAME}
-	    WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
-		DISCOVERY_TIMEOUT 30
+    WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+    DISCOVERY_TIMEOUT 30
 )
 
 add_test(NAME Test COMMAND ${PROJECT_NAME})
-
-

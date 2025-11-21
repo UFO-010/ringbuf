@@ -198,26 +198,28 @@ public:
         return max_size - 1 - ((local_tail - local_head) & mask);
     }
 
-    void advance_write_pointer(size_t advance) {
+    size_t advance_write_pointer(size_t advance) {
         if (advance == 0 || full()) {
-            return;
+            return 0;
         }
 
         size_t local_tail = load(tail, std::memory_order_acquire);
         size_t new_tail = (local_tail + advance) & mask;
 
         store(tail, new_tail, std::memory_order_release);
+        return (new_tail - local_tail) & mask;
     }
 
-    void advance_read_pointer(size_t advance) {
+    size_t advance_read_pointer(size_t advance) {
         if (advance == 0 || empty()) {
-            return;
+            return 0;
         }
 
         size_t local_head = load(head, std::memory_order_acquire);
         size_t new_head = (local_head + advance) & mask;
 
         store(head, new_head, std::memory_order_release);
+        return (new_head - local_head) & mask;
     }
 
     LinearBlock<T> get_write_linear_block_single() {
@@ -403,6 +405,11 @@ private:
     alignas(al) atomic_size tail = 0;
 };
 
+/**
+ * @brief The ConsumerHandler class
+ *
+ * Read only wrapper for `spsc_ringbuf`
+ */
 template <typename T, size_t max_size, bool ThreadSafe>
 class ConsumerHandler {
 public:
@@ -411,6 +418,8 @@ public:
     bool pop_front(T &dest) { return rb_.pop_front(dest); }
 
     size_t read_ready(T *item, size_t size) { return rb_.read_ready(item, size); }
+
+    size_t advance_read_pointer(size_t advance) { return rb_.advance_read_pointer(advance); }
 
 private:
     friend class spsc_ringbuf<T, max_size, ThreadSafe>;
@@ -421,6 +430,11 @@ private:
         : rb_(rb) {}
 };
 
+/**
+ * @brief The ProducerHandler class
+ *
+ * Write only wrapper for `spsc_ringbuf`
+ */
 template <typename T, size_t max_size, bool ThreadSafe>
 class ProducerHandler {
 public:
@@ -429,6 +443,8 @@ public:
     bool push_back(T &&item) { return rb_.push_back(std::move(item)); }
 
     size_t append(const T *item, size_t size) { return rb_.append(item, size); }
+
+    size_t advance_write_pointer(size_t advance) { return rb_.advance_write_pointer(advance); }
 
 private:
     friend class spsc_ringbuf<T, max_size, ThreadSafe>;
