@@ -194,11 +194,16 @@ TEST(ringbuf_test, linear_block_test) {
     auto bl = rb.get_write_linear_block_single();
     EXPECT_EQ(bl.size(), temp_size - 1);
     EXPECT_NE(bl.data(), nullptr);
+    EXPECT_NE(bl.end(), nullptr);
+    EXPECT_FALSE(bl.empty());
+    // Test buf is char, num of bytes = size
+    EXPECT_EQ(bl.size(), bl.bytes());
 
     rb.advance_write_pointer(skip);
     bl = rb.get_write_linear_block_single();
     EXPECT_EQ(bl.size(), temp_size - skip - 1);
     EXPECT_NE(bl.data(), nullptr);
+    EXPECT_FALSE(bl.empty());
 
     rb.reset();
     rb.advance_write_pointer(temp_size - skip);
@@ -210,7 +215,9 @@ TEST(ringbuf_test, linear_block_test) {
     rb.advance_write_pointer(temp_size - 1);
     bl = rb.get_write_linear_block_single();
     EXPECT_EQ(bl.size(), 0);
+    EXPECT_TRUE(bl.empty());
     EXPECT_EQ(bl.data(), nullptr);
+    EXPECT_EQ(bl.end(), nullptr);
 
     rb.reset();
     rb.advance_write_pointer(skip);
@@ -228,12 +235,15 @@ TEST(ringbuf_test, linear_block_test) {
     rb.advance_write_pointer(temp_size - 1);
     bl = rb.get_read_linear_block_single();
     EXPECT_EQ(bl.size(), temp_size - 1);
+    EXPECT_FALSE(bl.empty());
     EXPECT_NE(bl.data(), nullptr);
 
     rb.reset();
     bl = rb.get_read_linear_block_single();
     EXPECT_EQ(bl.size(), 0);
+    EXPECT_TRUE(bl.empty());
     EXPECT_EQ(bl.data(), nullptr);
+    EXPECT_EQ(bl.end(), nullptr);
 }
 
 TEST(ringbuf_test, block_test) {
