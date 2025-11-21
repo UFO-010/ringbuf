@@ -10,11 +10,25 @@
 #include "blockdata.hpp"
 
 template <typename T, size_t max_size, bool ThreadSafe>
+class ProducerHandler;
+
+template <typename T, size_t max_size, bool ThreadSafe>
+class ConsumerHandler;
+
+template <typename T, size_t max_size, bool ThreadSafe>
 class spsc_ringbuf {
     static_assert((max_size & (max_size - 1)) == 0, "max_size value should be power of 2");
 
 public:
     explicit spsc_ringbuf() = default;
+
+    ProducerHandler<T, max_size, ThreadSafe> get_producer() noexcept {
+        return ProducerHandler<T, max_size, ThreadSafe>(*this);
+    }
+
+    ConsumerHandler<T, max_size, ThreadSafe> get_consumer() noexcept {
+        return ConsumerHandler<T, max_size, ThreadSafe>(*this);
+    }
 
     void reset() {
         store(head, 0);
@@ -387,6 +401,42 @@ private:
 
     alignas(al) atomic_size head = 0;
     alignas(al) atomic_size tail = 0;
+};
+
+template <typename T, size_t max_size, bool ThreadSafe>
+class ConsumerHandler {
+public:
+    T pop_front() { return rb_.pop_front(); }
+
+    bool pop_front(T &dest) { return rb_.pop_front(dest); }
+
+    size_t read_ready(T *item, size_t size) { return rb_.read_ready(item, size); }
+
+private:
+    friend class spsc_ringbuf<T, max_size, ThreadSafe>;
+
+    spsc_ringbuf<T, max_size, ThreadSafe> &rb_;
+
+    ConsumerHandler(spsc_ringbuf<T, max_size, ThreadSafe> &rb)
+        : rb_(rb) {}
+};
+
+template <typename T, size_t max_size, bool ThreadSafe>
+class ProducerHandler {
+public:
+    bool push_back(const T &item) { return rb_.push_back(item); }
+
+    bool push_back(T &&item) { return rb_.push_back(std::move(item)); }
+
+    size_t append(const T *item, size_t size) { return rb_.append(item, size); }
+
+private:
+    friend class spsc_ringbuf<T, max_size, ThreadSafe>;
+
+    spsc_ringbuf<T, max_size, ThreadSafe> &rb_;
+
+    ProducerHandler(spsc_ringbuf<T, max_size, ThreadSafe> &rb)
+        : rb_(rb) {}
 };
 
 #endif
