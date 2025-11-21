@@ -417,7 +417,7 @@ private:
 
     spsc_ringbuf<T, max_size, ThreadSafe> &rb_;
 
-    ConsumerHandler(spsc_ringbuf<T, max_size, ThreadSafe> &rb)
+    explicit ConsumerHandler(spsc_ringbuf<T, max_size, ThreadSafe> &rb)
         : rb_(rb) {}
 };
 
@@ -435,7 +435,7 @@ private:
 
     spsc_ringbuf<T, max_size, ThreadSafe> &rb_;
 
-    ProducerHandler(spsc_ringbuf<T, max_size, ThreadSafe> &rb)
+    explicit ProducerHandler(spsc_ringbuf<T, max_size, ThreadSafe> &rb)
         : rb_(rb) {}
 };
 
