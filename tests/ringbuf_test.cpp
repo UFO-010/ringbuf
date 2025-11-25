@@ -234,17 +234,17 @@ TEST(ringbuf_test, peek_test) {
     rb.reset();
     rb.advance_write_pointer(skip);
     rb.advance_read_pointer(skip);
-    for (size_t i = 0; i < temp_size; i++) {
+    for (size_t i = 0; i < test.size(); i++) {
         rb.push_back(i);
     }
 
-    EXPECT_EQ(rb.peek_ready(test.data(), test.size()), temp_size - 1);
-    for (size_t i = 0; i < temp_size - 1; i++) {
+    EXPECT_EQ(rb.peek_ready(test.data(), test.size()), test.size() - 1);
+    for (size_t i = 0; i < test.size() - 1; i++) {
         EXPECT_EQ(test.at(i), i);
     }
 
-    EXPECT_EQ(rb.peek_ready(test.data(), test.size()), temp_size - 1);
-    for (size_t i = 0; i < temp_size - 1; i++) {
+    EXPECT_EQ(rb.peek_ready(test.data(), test.size()), test.size() - 1);
+    for (size_t i = 0; i < test.size() - 1; i++) {
         EXPECT_EQ(test.at(i), i);
     }
 }
@@ -488,4 +488,10 @@ TEST(ringbuf_test, producer_consumer_test) {
     producer.push_back(test_ch);
     test = consumer.pop_front();
     EXPECT_EQ(test, test_ch);
+
+    rb.reset();
+    EXPECT_EQ(producer.advance_write_pointer(rb.capacity() - 1), rb.capacity() - 1);
+    EXPECT_EQ(producer.push_back(test_ch), false);
+    EXPECT_EQ(consumer.advance_read_pointer(rb.capacity() - 1), rb.capacity() - 1);
+    EXPECT_EQ(consumer.pop_front(), {});
 }
