@@ -43,3 +43,5 @@ gtest_discover_tests(${PROJECT_NAME}
 )
 
 add_test(NAME Test COMMAND ${PROJECT_NAME})
+
+list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_LIST_DIR}/../../")

@@ -185,6 +185,68 @@ TEST(ringbuf_test, overflow_test) {
     EXPECT_EQ(readed, rb.capacity() - 1);
 }
 
+TEST(ringbuf_test, peek_test) {
+    constexpr size_t temp_size = 4;
+    const size_t skip = 2;
+    std::array<size_t, temp_size> test = {};
+
+    spsc_ringbuf<size_t, temp_size, false> rb;
+
+    EXPECT_EQ(rb.peek(), {});
+    EXPECT_EQ(rb.peek_ready(nullptr, 0), 0);
+    EXPECT_EQ(rb.peek_ready(nullptr, skip), 0);
+    EXPECT_EQ(rb.peek_ready(test.data(), 0), 0);
+
+    rb.advance_write_pointer(temp_size - 1);
+    rb.advance_read_pointer(temp_size - 1);
+    EXPECT_EQ(rb.peek_ready(test.data(), test.size()), 0);
+
+    rb.reset();
+    rb.push_back(10);
+    rb.push_back(20);
+    // Should peek the first item without removing it
+    EXPECT_EQ(rb.peek(), 10);
+    EXPECT_EQ(rb.peek(), 10);
+
+    size_t item = 0;
+    rb.pop_front(item);
+    EXPECT_EQ(item, 10);
+    EXPECT_EQ(rb.peek(), 20);
+
+    rb.reset();
+
+    for (size_t i = 0; i < temp_size; i++) {
+        rb.push_back(i);
+    }
+    // Should peek the items without removing them
+    EXPECT_EQ(rb.peek_ready(test.data(), test.size()), temp_size - 1);
+    for (size_t i = 0; i < temp_size - 1; i++) {
+        EXPECT_EQ(test.at(i), i);
+    }
+
+    EXPECT_EQ(rb.peek_ready(test.data(), test.size()), temp_size - 1);
+    for (size_t i = 0; i < temp_size - 1; i++) {
+        EXPECT_EQ(test.at(i), i);
+    }
+
+    rb.reset();
+    rb.advance_write_pointer(skip);
+    rb.advance_read_pointer(skip);
+    for (size_t i = 0; i < temp_size; i++) {
+        rb.push_back(i);
+    }
+
+    EXPECT_EQ(rb.peek_ready(test.data(), test.size()), temp_size - 1);
+    for (size_t i = 0; i < temp_size - 1; i++) {
+        EXPECT_EQ(test.at(i), i);
+    }
+
+    EXPECT_EQ(rb.peek_ready(test.data(), test.size()), temp_size - 1);
+    for (size_t i = 0; i < temp_size - 1; i++) {
+        EXPECT_EQ(test.at(i), i);
+    }
+}
+
 TEST(ringbuf_test, linear_block_test) {
     constexpr size_t temp_size = 16;
     constexpr size_t skip = 5;
@@ -248,62 +310,77 @@ TEST(ringbuf_test, linear_block_test) {
 
 TEST(ringbuf_test, block_test) {
     constexpr size_t temp_size = 8;
-    spsc_ringbuf<int, temp_size, false> rb;
-    const int skip = 3;
+    spsc_ringbuf<size_t, temp_size, false> rb;
+    const size_t skip = 3;
 
-    for (int i = 0; i < skip; ++i) {
+    auto read_blocks = rb.get_read_segments();
+    EXPECT_TRUE(read_blocks.empty());
+
+    auto write_blocks = rb.get_write_segments();
+    EXPECT_FALSE(write_blocks.empty());
+
+    for (size_t i = 0; i < skip; ++i) {
         rb.push_back(i);
     }
 
-    auto read_blocks = rb.get_read_segments();
+    read_blocks = rb.get_read_segments();
     EXPECT_TRUE(read_blocks.is_linear());
     EXPECT_EQ(read_blocks.first.size(), skip);
     EXPECT_EQ(read_blocks.second.size(), 0);
     EXPECT_EQ(read_blocks.total_size(), skip);
-    for (int i = 0; i < skip; i++) {
+    EXPECT_FALSE(read_blocks.empty());
+    for (size_t i = 0; i < skip; i++) {
         // clang-format off
         // NOLINTNEXTLINE
         EXPECT_EQ(*(read_blocks.first.data() + i), i); //NOSONAR
         // clang-format on
     }
 
-    auto write_blocks = rb.get_write_segments();
+    write_blocks = rb.get_write_segments();
     EXPECT_TRUE(write_blocks.is_linear());
     EXPECT_EQ(write_blocks.first.size(), temp_size - 1 - skip);
     EXPECT_EQ(write_blocks.second.size(), 0);
+
+    rb.reset();
+    rb.advance_write_pointer(skip);
+    rb.advance_read_pointer(skip);
+    write_blocks = rb.get_write_segments();
+    EXPECT_FALSE(write_blocks.is_linear());
+    EXPECT_EQ(write_blocks.first.size(), temp_size - skip);
+    EXPECT_EQ(write_blocks.second.size(), temp_size - (temp_size - skip) - 1);
 
     // Do overflow, so data wrap around
     rb.reset();
     rb.advance_write_pointer(temp_size - skip);
     rb.advance_read_pointer(temp_size - skip);
 
-    const int over_skip = skip + 4;
+    const size_t over_skip = skip + 4;
 
-    for (int i = 0; i < over_skip; i++) {
+    for (size_t i = 0; i < over_skip; i++) {
         rb.push_back(i);
     }
 
     read_blocks = rb.get_read_segments();
     EXPECT_FALSE(read_blocks.is_linear());
     EXPECT_EQ(read_blocks.total_size(), over_skip);
-    EXPECT_EQ(read_blocks.total_bytes(), over_skip * sizeof(int));
+    EXPECT_EQ(read_blocks.total_bytes(), over_skip * sizeof(size_t));
     EXPECT_FALSE(read_blocks.empty());
 
-    const int first_expected = temp_size - skip - 2;
-    const int second_expected = over_skip - first_expected;
+    const size_t first_expected = temp_size - skip - 2;
+    const size_t second_expected = over_skip - first_expected;
     EXPECT_EQ(read_blocks.first.size(), first_expected);
     EXPECT_NE(read_blocks.first.data(), nullptr);
     EXPECT_EQ(read_blocks.second.size(), second_expected);
     EXPECT_NE(read_blocks.second.data(), nullptr);
 
-    for (int i = 0; i < read_blocks.first.size(); i++) {
+    for (size_t i = 0; i < read_blocks.first.size(); i++) {
         // clang-format off
         // NOLINTNEXTLINE
         EXPECT_EQ(*(read_blocks.first.data() + i), i); //NOSONAR
         // clang-format on
     }
 
-    for (int i = 0; i < read_blocks.second.size(); i++) {
+    for (size_t i = 0; i < read_blocks.second.size(); i++) {
         // clang-format off
         // NOLINTNEXTLINE
         EXPECT_EQ(*(read_blocks.second.data() + i), i + read_blocks.first.size()); //NOSONAR
@@ -362,6 +439,12 @@ TEST(ringbuf_test, push_pop_test) {
     st_rb.read_ready(st_ar.data(), st_ar.size());
     st_test = st_ar.at(0) + st_ar.at(1);
     EXPECT_EQ(st_test, "Hello world");
+
+    st_rb.reset();
+    st_rb.advance_write_pointer(temp_size - 1);
+    EXPECT_FALSE(st_rb.push_back(std::move(st_test)));
+    st_rb.advance_read_pointer(temp_size - 1);
+    EXPECT_EQ(st_rb.pop_front(), std::string());
 }
 
 TEST(ringbuf_test, move_semantics) {
@@ -384,4 +467,23 @@ TEST(ringbuf_test, move_semantics) {
     // Retrieved should be the original content
     EXPECT_EQ(retrieved, original_copy);
     EXPECT_TRUE(rb.empty());
+}
+
+TEST(ringbuf_test, producer_consumer_test) {
+    constexpr size_t temp_size = 8;
+    const size_t skip = 3;
+    const char test_ch = 'H';
+
+    spsc_ringbuf<char, temp_size, false> rb;
+    auto producer = rb.get_producer();
+    auto consumer = rb.get_consumer();
+
+    producer.push_back(test_ch);
+    char test = 0;
+    consumer.pop_front(test);
+    EXPECT_EQ(test, test_ch);
+
+    producer.push_back(test_ch);
+    test = consumer.pop_front();
+    EXPECT_EQ(test, test_ch);
 }
