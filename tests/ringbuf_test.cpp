@@ -202,16 +202,18 @@ TEST(ringbuf_test, peek_test) {
     EXPECT_EQ(rb.peek_ready(test.data(), test.size()), 0);
 
     rb.reset();
-    rb.push_back(10);
-    rb.push_back(20);
+    const size_t first = 10;
+    const size_t second = 20;
+    rb.push_back(first);
+    rb.push_back(second);
     // Should peek the first item without removing it
-    EXPECT_EQ(rb.peek(), 10);
-    EXPECT_EQ(rb.peek(), 10);
+    EXPECT_EQ(rb.peek(), first);
+    EXPECT_EQ(rb.peek(), first);
 
     size_t item = 0;
     rb.pop_front(item);
-    EXPECT_EQ(item, 10);
-    EXPECT_EQ(rb.peek(), 20);
+    EXPECT_EQ(item, first);
+    EXPECT_EQ(rb.peek(), second);
 
     rb.reset();
 
@@ -472,14 +474,14 @@ TEST(ringbuf_test, move_semantics) {
 TEST(ringbuf_test, producer_consumer_test) {
     constexpr size_t temp_size = 8;
     const size_t skip = 3;
-    const char test_ch = 'H';
+    const size_t test_ch = 40;
 
-    spsc_ringbuf<char, temp_size, false> rb;
+    spsc_ringbuf<size_t, temp_size, false> rb;
     auto producer = rb.get_producer();
     auto consumer = rb.get_consumer();
 
     producer.push_back(test_ch);
-    char test = 0;
+    size_t test = 0;
     consumer.pop_front(test);
     EXPECT_EQ(test, test_ch);
 
