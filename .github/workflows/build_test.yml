@@ -1,0 +1,28 @@
+name: Cmake Build Test
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Configure CMake
+        run: |
+          mkdir build
+          cd build
+          cmake -S .. -G Ninja
+
+      - name: Build
+        run: cmake --build build
+
+      - name: Run Tests
+        run: ctest --test-dir build --output-on-failure
