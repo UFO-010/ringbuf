@@ -163,7 +163,7 @@ public:
     }
 
     /**
-     * @brief get_full
+     * @brief get_data_size
      * @return Number of T elements in buffer
      *
      *       `head`           `tail`
@@ -187,7 +187,7 @@ public:
     }
 
     /**
-     * @brief get_free
+     * @brief get_free_size
      * @return Number of free T elements in buffer
      */
     size_t get_free_size() const { return max_size - 1 - get_data_size(); }
@@ -299,6 +299,15 @@ public:
     }
 
 private:
+    /**
+     * @brief load
+     * @param var variable to load it's value from
+     * @param order memory order for atomic operations.
+     * @return value stored in `var`
+     *
+     * Wrapper function to load values stored in `head` and `tail` with desired memory order. If
+     * `ThreadSafe` == false, values are loaded directly and `order` is ignored
+     */
     template <typename varType>
     constexpr size_t load(const varType &var,
                           std::memory_order order = std::memory_order_relaxed) const {
@@ -312,9 +321,12 @@ private:
 
     /**
      * @brief store
-     * @param var
+     * @param var variable to store `value` in
      * @param value new value of `var`
-     * @param order
+     * @param order memory order for atomic operations.
+     *
+     * Wrapper function to update values stored in `head` and `tail` with desired memory order. If
+     * `ThreadSafe` == false, values are updated directly and `order` is ignored
      */
     template <typename varType>
     constexpr void store(varType &var,
@@ -392,6 +404,7 @@ private:
         return copy_size;
     }
 
+    /// Local buffer we store data at. Consider using and external data storage
     std::array<T, max_size> buf = {};
 
     /// Conditional type of head and tail. Atomic if ThreadSafe is true.
@@ -421,6 +434,10 @@ public:
 
     size_t advance_read_pointer(size_t advance) { return rb_.advance_read_pointer(advance); }
 
+    LinearBlock<T> get_first_segment() { return rb_.get_read_linear_block_single(); }
+
+    BufferSegments<T> get_segments() { return rb_.get_read_segments(); }
+
 private:
     friend class spsc_ringbuf<T, max_size, ThreadSafe>;
 
@@ -445,6 +462,10 @@ public:
     size_t append(const T *item, size_t size) { return rb_.append(item, size); }
 
     size_t advance_write_pointer(size_t advance) { return rb_.advance_write_pointer(advance); }
+
+    LinearBlock<T> get_first_segment() { return rb_.get_write_linear_block_single(); }
+
+    BufferSegments<T> get_segments() { return rb_.get_write_segments(); }
 
 private:
     friend class spsc_ringbuf<T, max_size, ThreadSafe>;
