@@ -177,15 +177,16 @@ TEST(ringbuf_test, overflow_test) {
     std::copy_n("Hello world", st.size(), expected_overwrite.begin());
     ASSERT_THAT(out_buf, testing::ElementsAreArray(expected_overwrite));
 
-    // We should be able to read and write at least ringbuf capacity
+    // Default overflow policy is `OverflowPolicy::DROP`, so we won't be able to write or read data
+    // at all if input size > capacity
     rb.reset();
     constexpr size_t big_size = 128;
     std::array<char, big_size> big_buf = {};
     big_buf.fill('\0');
     size_t readed = rb.append(big_buf.data(), big_buf.size());
-    EXPECT_EQ(readed, rb.capacity() - 1);
+    EXPECT_EQ(readed, 0);
     readed = rb.read_ready(big_buf.data(), big_buf.size());
-    EXPECT_EQ(readed, rb.capacity() - 1);
+    EXPECT_EQ(readed, 0);
 }
 
 TEST(ringbuf_test, peek_test) {
@@ -476,7 +477,6 @@ TEST(ringbuf_test, move_semantics) {
 
 TEST(ringbuf_test, producer_consumer_test) {
     constexpr size_t temp_size = 8;
-    const size_t skip = 3;
     const size_t test_ch = 40;
 
     spsc_ringbuf<size_t, temp_size, false> rb;
