@@ -4,6 +4,8 @@
 
 #include "ringbuf.hpp"
 
+namespace rb {
+
 /**
  * @brief The ProducerHandler class
  *
@@ -33,4 +35,5 @@ private:
         : rb_(rb) {}
 };
 
+}  // namespace ringbuf
 #endif

@@ -8,6 +8,8 @@
 
 #include "blockdata.hpp"
 
+namespace rb {
+
 /// FORWARD DECLARATION
 template <typename T, size_t max_size, bool ThreadSafe>
 class ProducerHandler;
@@ -21,7 +23,7 @@ enum class OverflowPolicy {
     DROP,       ///< Discard new data if buffer is full
     OVERWRITE,  ///< Overwrite oldest data (advance head)
     FAIL,       ///< Return 0 elements written (caller handles)
-    TOEND       ///< Writes as much data as it can to the end of buffer
+    TOEND       ///< Writes as much data as possible to the end of buffer
 };
 
 /**
@@ -474,3 +476,4 @@ private:
     alignas(al) atomic_size head = 0;
     alignas(al) atomic_size tail = 0;
 };
+}  // namespace ringbuf
