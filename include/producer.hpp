@@ -14,16 +14,59 @@ namespace rb {
 template <typename T, size_t max_size, bool ThreadSafe>
 class ProducerHandler {
 public:
+    /**
+     * @brief push_back
+     * @param item: element to write
+     * @return true if write succeeded, false if buffer full
+     *
+     * Write single element to buffer
+     */
     bool push_back(const T &item) { return rb_.push_back(item); }
 
+    /**
+     * @brief push_back
+     * @param item: element to write
+     * @return true if write succeeded, false if buffer full
+     *
+     * Write single element to buffer, move version
+     */
     bool push_back(T &&item) { return rb_.push_back(std::move(item)); }
 
+    /**
+     * @brief append
+     * @param item: Pointer to source array
+     * @param size: Number of elements to write
+     * @return Number of elements actually written
+     *
+     * Append multiple elements from array
+     */
     size_t append(const T *item, size_t size) { return rb_.append(item, size); }
 
+    /**
+     * @brief advance_write_pointer
+     * @param advance: Number of elements written
+     * @return Actual number of elements tail (write pointer) moved
+     *
+     * Advance write pointer after manual buffer write. Must be called after writing to blocks
+     * obtained from get_write_segments()
+     */
     size_t advance_write_pointer(size_t advance) { return rb_.advance_write_pointer(advance); }
 
+    /**
+     * @brief get_first_segment
+     * @return LinearBlock representing first writable region
+     *
+     * Get contiguous write-available segment. Allows zero-copy write operations
+     */
     LinearBlock<T> get_first_segment() { return rb_.get_write_linear_block_single(); }
 
+    /**
+     * @brief get_segments
+     * @return Buffer segments avaliable for writing
+     *
+     * Get write segments (handles wrap-around). Allows direct access to buffer memory for zero-copy
+     * operations
+     */
     BufferSegments<T> get_segments() { return rb_.get_write_segments(); }
 
 private:
@@ -35,5 +78,5 @@ private:
         : rb_(rb) {}
 };
 
-}  // namespace ringbuf
+}  // namespace rb
 #endif
