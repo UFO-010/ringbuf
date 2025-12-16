@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <atomic>
 #include <cstring>
+#include <functional>
 
 #include "blockdata.hpp"
 
@@ -26,6 +27,25 @@ enum class OverflowPolicy {
     TOEND       ///< Writes as much data as possible to the end of buffer
 };
 
+/// Event types for notifications
+enum class EventType {
+    DATA_AVAILABLE,  ///< New data written (threshold exceeded or buffer had data)
+    BUFFER_FULL,     ///< Buffer capacity exhausted
+    BUFFER_EMPTY,    ///< All data consumed
+    OVERFLOW,        ///< Overflow policy triggered
+    RESET            ///< Buffer reset called
+};
+
+/// Event notification structure
+struct BufferEvent {
+    EventType type;            ///< Type of event that occurred
+    size_t current_size;       ///< Current buffer occupancy in elements
+    size_t free_space;         ///< Available free space in elements
+    uint64_t sequence_number;  ///< Monotonic event sequence counter
+};
+
+using EventCallback = std::function<void(const BufferEvent &)>;
+
 /**
  * @brief The spsc_ringbuf class
  *
@@ -36,7 +56,8 @@ enum class OverflowPolicy {
 template <typename T,
           size_t max_size,
           bool ThreadSafe,
-          OverflowPolicy Policy = OverflowPolicy::DROP>
+          OverflowPolicy Policy = OverflowPolicy::DROP,
+          size_t MaxCallbacks = 4>
 class spsc_ringbuf {
     static_assert((max_size & (max_size - 1)) == 0, "max_size value should be power of 2");
 
@@ -81,6 +102,13 @@ public:
 
     bool full() const { return get_free_size() == 0; }
 
+    /**
+     * @brief push_back
+     * @param item: element to write
+     * @return true if write succeeded, false if buffer full
+     *
+     * Write single element to buffer
+     */
     bool push_back(const T &item) {
         size_t local_tail = load(tail, std::memory_order_acquire);
         if (handle_overflow(local_tail, 1) == 0) {
@@ -90,12 +118,20 @@ public:
         buf[local_tail] = item;
 
         local_tail = (local_tail + 1) & mask;
-
         store(tail, local_tail, std::memory_order_release);
+
+        emit_event_internal(EventType::DATA_AVAILABLE);
 
         return true;
     }
 
+    /**
+     * @brief push_back
+     * @param item: element to write
+     * @return true if write succeeded, false if buffer full
+     *
+     * Write single element to buffer, move version
+     */
     bool push_back(T &&item) {
         size_t local_tail = load(tail, std::memory_order_acquire);
 
@@ -106,12 +142,21 @@ public:
         buf[local_tail] = std::move(item);
 
         local_tail = (local_tail + 1) & mask;
-
         store(tail, local_tail, std::memory_order_release);
+
+        emit_event_internal(EventType::DATA_AVAILABLE);
 
         return true;
     }
 
+    /**
+     * @brief append
+     * @param item: Pointer to source array
+     * @param size: Number of elements to write
+     * @return Number of elements actually written
+     *
+     * Append multiple elements from array
+     */
     size_t append(const T *item, size_t size) {
         if (size == 0 || item == nullptr) {
             return 0;
@@ -120,14 +165,26 @@ public:
         size_t local_tail = load(tail, std::memory_order_acquire);
 
         size_t copy_size = buf_store(local_tail, item, size);
-        size_t new_tail = (local_tail + copy_size) & mask;
 
+        size_t new_tail = (local_tail + copy_size) & mask;
         store(tail, new_tail, std::memory_order_release);
+
+        if (copy_size > 0) {
+            emit_event_internal(EventType::DATA_AVAILABLE);
+        }
+
         return copy_size;
     }
 
+    /**
+     * @brief pop_front
+     * @return Element from buffer or default T() if empty
+     *
+     * Read and remove element from buffer
+     */
     T pop_front() {
         if (empty()) {
+            emit_event_internal(EventType::BUFFER_EMPTY);
             return {};
         }
 
@@ -140,8 +197,16 @@ public:
         return item;
     }
 
+    /**
+     * @brief pop_front
+     * @param dest: Destination
+     * @return true if element is moved
+     *
+     * Read and remove element from buffer
+     */
     bool pop_front(T &dest) {
         if (empty()) {
+            emit_event_internal(EventType::BUFFER_EMPTY);
             return false;
         }
 
@@ -154,8 +219,17 @@ public:
         return true;
     }
 
+    /**
+     * @brief read_ready
+     * @param item: Destination array
+     * @param size: Number of elements to read
+     * @return Number of elements actually read
+     *
+     * Read and remove multiple elements
+     */
     size_t read_ready(T *item, size_t size) {
         if (size == 0 || item == nullptr) {
+            emit_event_internal(EventType::BUFFER_EMPTY);
             return 0;
         }
 
@@ -166,14 +240,35 @@ public:
 
         store(head, new_head, std::memory_order_release);
 
+        if (copy_size == 0) {
+            emit_event_internal(EventType::BUFFER_EMPTY);
+        }
+
         return copy_size;
     }
 
+    /**
+     * @brief peek
+     * @return First element or default T() if empty
+     *
+     * Peek at first element without removing and moving read pointer
+     */
     T peek() const {
-        size_t head_local = load(head, std::memory_order_relaxed);
-        return buf[head_local];
+        size_t local_head = load(head, std::memory_order_relaxed);
+        if (get_data_size(local_head) == 0) {
+            return {};
+        }
+        return buf[local_head];
     }
 
+    /**
+     * @brief peek_ready
+     * @param item: Destination array
+     * @param size: Number of elements to read
+     * @return  Number of elements actually read
+     *
+     * Peek at elements without removing and moving read pointer
+     */
     size_t peek_ready(T *item, size_t size) {
         if (size == 0 || item == nullptr) {
             return 0;
@@ -193,7 +288,7 @@ public:
 
     /**
      * @brief get_data_size
-     * @return Number of T elements in buffer
+     * @return Number of elements available for reading
      *
      *       `head`           `tail`
      * --------|================|---------
@@ -202,6 +297,9 @@ public:
      *       `tail`           `head`
      * ========|----------------|========
      *    data        free         data
+     *
+     * Calculate number of elements available for reading. Uses relaxed memory order - approximate
+     * value
      */
     size_t get_data_size() const {
         size_t local_head = load(head, std::memory_order_relaxed);
@@ -210,23 +308,22 @@ public:
         return (local_tail - local_head) & mask;
     }
 
-    size_t get_data_size(size_t local_head) const {
-        size_t local_tail = load(tail, std::memory_order_relaxed);
-        return (local_tail - local_head) & mask;
-    }
-
     /**
      * @brief get_free_size
-     * @return Number of free T elements in buffer
+     * @return Free space in buffer
+     *
+     * Calculate free space in buffer. Reserves 1 element to distinguish empty from full
      */
     size_t get_free_size() const { return max_size - 1 - get_data_size(); }
 
-    size_t get_free_size(size_t local_tail) const {
-        size_t local_head = load(head, std::memory_order_relaxed);
-
-        return max_size - 1 - ((local_tail - local_head) & mask);
-    }
-
+    /**
+     * @brief advance_write_pointer
+     * @param advance: Number of elements written
+     * @return Actual number of elements tail (write pointer) moved
+     *
+     * Advance write pointer after manual buffer write. Must be called after writing to blocks
+     * obtained from get_write_segments()
+     */
     size_t advance_write_pointer(size_t advance) {
         if (advance == 0 || full()) {
             return 0;
@@ -234,11 +331,20 @@ public:
 
         size_t local_tail = load(tail, std::memory_order_acquire);
         size_t new_tail = (local_tail + advance) & mask;
-
         store(tail, new_tail, std::memory_order_release);
+
+        emit_event_internal(EventType::DATA_AVAILABLE);
+
         return (new_tail - local_tail) & mask;
     }
 
+    /**
+     * @brief advance_read_pointer
+     * @param advance: Number of elements readed
+     * @return Actual number of elements head (read pointer) moved
+     *
+     * Advance read pointer after manual buffer read
+     */
     size_t advance_read_pointer(size_t advance) {
         if (advance == 0 || empty()) {
             return 0;
@@ -251,6 +357,46 @@ public:
         return (new_head - local_head) & mask;
     }
 
+    /**
+     * @brief subscribe
+     * @param callback
+     * @return true if subsribed, false if callback buffer full
+     *
+     * Subscribe to buffer events
+     * @note Callbacks are called synchronously from producer/consumer threads
+     * Keep callbacks fast to avoid blocking operations
+     */
+    bool subscribe(EventCallback callback) noexcept {
+        if (callback_count >= MaxCallbacks) {
+            return false;
+        }
+
+        callbacks[callback_count++] = std::move(callback);
+        return true;
+    }
+
+    /**
+     * @brief unsubscribe
+     * @param index Callback index to remove
+     * @return true if unsubsribed, false if callback buffer empty
+     *
+     * Unsubscribe from buffer events
+     */
+    bool unsubscribe(size_t index) noexcept {
+        if (index >= callback_count) {
+            return false;
+        }
+
+        callbacks[index] = std::move(callbacks[--callback_count]);
+        return true;
+    }
+
+    /**
+     * @brief get_write_linear_block_single
+     * @return LinearBlock representing first writable region
+     *
+     * Get contiguous write-available segment. Allows zero-copy write operations
+     */
     LinearBlock<T> get_write_linear_block_single() {
         size_t local_tail = load(tail, std::memory_order_acquire);
 
@@ -266,6 +412,12 @@ public:
         return {block_ptr, block_size};
     }
 
+    /**
+     * @brief get_read_linear_block_single
+     * @return LinearBlock representing readable region
+     *
+     * Get single contiguous read segment
+     */
     LinearBlock<T> get_read_linear_block_single() {
         size_t local_head = load(head, std::memory_order_acquire);
 
@@ -281,6 +433,13 @@ public:
         return {block_ptr, block_size};
     }
 
+    /**
+     * @brief get_write_segments
+     * @return Buffer segments avaliable for writing
+     *
+     * Get write segments (handles wrap-around). Allows direct access to buffer memory for zero-copy
+     * operations
+     */
     BufferSegments<T> get_write_segments() {
         size_t local_tail = load(tail, std::memory_order_acquire);
 
@@ -304,6 +463,13 @@ public:
         return {first_block, second_block};
     }
 
+    /**
+     * @brief get_read_segments
+     * @return Buffer segments avaliable for reading
+     *
+     * Get read segments (handles wrap-around). Allows direct access to buffer memory for direct
+     * copy operations
+     */
     BufferSegments<T> get_read_segments() {
         size_t local_head = load(head, std::memory_order_acquire);
         size_t data_size = get_data_size(local_head);
@@ -369,6 +535,15 @@ private:
         }
     }
 
+    /**
+     * @brief buf_store
+     * @param local_tail: Current write position
+     * @param item: Source data array
+     * @param size: Number of elements to write
+     * @return Number of elements actually written
+     *
+     * Write data to buffer with overflow handling
+     */
     size_t buf_store(const size_t local_tail, const T *item, size_t size) {
         size_t copy_size = handle_overflow(local_tail, size);
         if (copy_size == 0) {
@@ -399,6 +574,15 @@ private:
         return copy_size;
     }
 
+    /**
+     * @brief buf_read
+     * @param local_head: Current read position
+     * @param item: Destination array
+     * @param size: Number of elements to read
+     * @return Number of elements actually read
+     *
+     * Read data from buffer
+     */
     size_t buf_read(const size_t local_head, T *item, const size_t size) {
         size_t full_data_size = get_data_size(local_head);
         if (full_data_size == 0) {
@@ -431,6 +615,31 @@ private:
         return copy_size;
     }
 
+    /**
+     * @brief get_data_size
+     * @param local_head: Current read position
+     * @return Number of elements available for reading
+     *
+     * Calculate number of elements available for reading given a specific head position
+     */
+    size_t get_data_size(size_t local_head) const {
+        size_t local_tail = load(tail, std::memory_order_relaxed);
+        return (local_tail - local_head) & mask;
+    }
+
+    /**
+     * @brief get_free_size
+     * @param local_tail Current write position
+     * @return Free space in buffer
+     *
+     * Calculate free space given a specific tail position. Reserves 1 element to distinguish empty
+     * from full
+     */
+    size_t get_free_size(size_t local_tail) const {
+        size_t local_head = load(head, std::memory_order_relaxed);
+        return max_size - 1 - ((local_tail - local_head) & mask);
+    }
+
     size_t handle_overflow(size_t local_tail, size_t requested_size) noexcept {
         size_t free_space = get_free_size(local_tail);
 
@@ -439,6 +648,7 @@ private:
         }
 
         if constexpr (Policy == OverflowPolicy::FAIL) {
+            emit_event_internal(EventType::BUFFER_FULL);
             return 0;
         } else if constexpr (Policy == OverflowPolicy::DROP) {
             return 0;
@@ -457,10 +667,33 @@ private:
         }
     }
 
+    /**
+     * @brief emit_event_internal
+     * @param type: Event type
+     *
+     * Emit event to all subscribers
+     */
+    void emit_event_internal(EventType type) noexcept {
+        if (callback_count == 0) return;
+
+        BufferEvent evt{.type = type,
+                        .current_size = get_data_size(),
+                        .free_space = get_free_size(),
+                        .sequence_number = event_sequence++};
+
+        for (size_t i = 0; i < callback_count; ++i) {
+            callbacks[i](evt);
+        }
+    }
+
     /// Ring buffer storage (fixed-size, allocated on stack).
     /// Layout: [0] [1] [2] ... [MaxSize-1] -> wraps to [0].
     /// Consider using and external data storage
     std::array<T, max_size> buf = {};
+
+    /// Event notification callbacks
+    std::array<EventCallback, MaxCallbacks> callbacks = {};
+    size_t callback_count = 0;
 
     /// Conditional type of head and tail. Atomic if ThreadSafe is true.
     using atomic_size = std::conditional_t<ThreadSafe, std::atomic<size_t>, size_t>;
@@ -468,8 +701,12 @@ private:
     constexpr static int al = 64;
     /// Bitmask we use to check buffer overflow
     constexpr static size_t mask = (max_size - 1);
+    /// Event sequence counter for monotonic event ordering
+    size_t event_sequence = 0;
 
+    /// Read pointer (where consumer reads from)
     alignas(al) atomic_size head = 0;
+    /// Write pointer (where producer writes to)
     alignas(al) atomic_size tail = 0;
 };
 }  // namespace rb

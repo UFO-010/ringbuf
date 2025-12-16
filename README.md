@@ -130,4 +130,4 @@ class spsc_ringbuf;
 | **T** | Element type | Any copyable/moveable type |
 | **MaxSize** | Buffer capacity in elements | Must be power of 2 (2, 4, 8, 16, ..., 65536) |
 | **ThreadSafe** | Enable atomic operations | true: uses std::atomic, false: uses plain size_t |
-| **Policy** | Overflow handling | DROP (default), OVERWRITE, FAIL |
+| **Policy** | Overflow handling | DROP (default), OVERWRITE, FAIL, TOEND |
