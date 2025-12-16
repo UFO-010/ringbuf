@@ -23,7 +23,7 @@ constexpr size_t buf_size = std::bit_ceil(test_size * max_len);
 
 constexpr size_t spsc_size = std::bit_ceil(test_size);
 
-void thread_producer(spsc_ringbuf<char, spsc_size, true> &rb, bool *ended) {
+void thread_producer(rb::spsc_ringbuf<char, spsc_size, true> &rb, bool *ended) {
     std::array<std::array<char, max_len>, test_size> test = {};
     for (int i = 0; i < test.size(); i++) {
         test.at(i).fill('\0');
@@ -36,7 +36,7 @@ void thread_producer(spsc_ringbuf<char, spsc_size, true> &rb, bool *ended) {
     *ended = true;
 }
 
-void thread_consumer(spsc_ringbuf<char, spsc_size, true> &rb,
+void thread_consumer(rb::spsc_ringbuf<char, spsc_size, true> &rb,
                      std::array<char, buf_size> &out_buf,
                      const bool *ended) {
     size_t s = 0;
@@ -56,7 +56,7 @@ std::vector<std::string> splitStringStream(const std::string &str, char delimite
 }
 
 TEST(ringbuf_thread_test, thread_safe) {
-    spsc_ringbuf<char, spsc_size, true> rb;
+    rb::spsc_ringbuf<char, spsc_size, true> rb;
     std::array<char, buf_size> out_buf = {};
     bool ended = false;
     out_buf.fill('\0');

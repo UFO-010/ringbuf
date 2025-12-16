@@ -444,10 +444,6 @@ private:
             return 0;
         } else if constexpr (Policy == OverflowPolicy::TOEND) {
             size_t space_to_make = std::min(requested_size, free_space);
-            size_t local_head = load(head, std::memory_order_acquire);
-            size_t new_head = (local_head + space_to_make) & mask;
-
-            store(head, new_head, std::memory_order_release);
 
             return space_to_make;
         } else if constexpr (Policy == OverflowPolicy::OVERWRITE) {
@@ -476,4 +472,4 @@ private:
     alignas(al) atomic_size head = 0;
     alignas(al) atomic_size tail = 0;
 };
-}  // namespace ringbuf
+}  // namespace rb

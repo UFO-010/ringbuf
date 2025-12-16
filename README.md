@@ -14,8 +14,8 @@ Core Design Principles
 ┌─────────────────────────────────────────────┐
 │     SPSC Ring Buffer (MaxSize elements)     │
 ├─────────────────────────────────────────────┤
-│     ... [max_size-1]                │
-│   ↑                ↑                         │
+│     ... [max_size-1]                        │
+│   ↑                ↑                        │
 │ head            tail                        │
 │ (Consumer)      (Producer)                  │
 └─────────────────────────────────────────────┘
@@ -109,3 +109,25 @@ ringbuf::spsc_ringbuf<Data, 1024, true, rb::OverflowPolicy::FAIL> buf3;
 // TOEND: Writes as much data as possible to the end of buffer
 ringbuf::spsc_ringbuf<Data, 1024, true, rb::OverflowPolicy::TOEND> buf3;
 ```
+
+| Policy | Behavior | Use Case |
+|--------|----------|----------|
+| **DROP** | Discard new data if full | Non-critical telemetry, best-effort delivery |
+| **OVERWRITE** | Discard oldest data | Logging, rolling buffers, sensor data |
+| **FAIL** | Return 0 elements written | Critical systems requiring explicit handling |
+| **TOEND** | Discard new data that does not fit | Sensor data streams, Logging bursts |
+
+
+## Template Parameters
+
+```cpp
+template <typename T, size_t MaxSize, bool ThreadSafe, OverflowPolicy Policy>
+class spsc_ringbuf;
+```
+
+| Parameter | Description | Constraints |
+|-----------|-------------|-------------|
+| **T** | Element type | Any copyable/moveable type |
+| **MaxSize** | Buffer capacity in elements | Must be power of 2 (2, 4, 8, 16, ..., 65536) |
+| **ThreadSafe** | Enable atomic operations | true: uses std::atomic, false: uses plain size_t |
+| **Policy** | Overflow handling | DROP (default), OVERWRITE, FAIL |
