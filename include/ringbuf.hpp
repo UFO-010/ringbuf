@@ -20,7 +20,8 @@ class ConsumerHandler;
 enum class OverflowPolicy {
     DROP,       ///< Discard new data if buffer is full
     OVERWRITE,  ///< Overwrite oldest data (advance head)
-    FAIL        ///< Return 0 elements written (caller handles)
+    FAIL,       ///< Return 0 elements written (caller handles)
+    TOEND       ///< Writes as much data as it can to the end of buffer
 };
 
 /**
@@ -438,6 +439,8 @@ private:
         if constexpr (Policy == OverflowPolicy::FAIL) {
             return 0;
         } else if constexpr (Policy == OverflowPolicy::DROP) {
+            return 0;
+        } else if constexpr (Policy == OverflowPolicy::TOEND) {
             size_t space_to_make = std::min(requested_size, free_space);
             size_t local_head = load(head, std::memory_order_acquire);
             size_t new_head = (local_head + space_to_make) & mask;
