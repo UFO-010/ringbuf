@@ -79,11 +79,10 @@ public:
     bool full() const { return get_free_size() == 0; }
 
     bool push_back(const T &item) {
-        if (full()) {
+        size_t local_tail = load(tail, std::memory_order_acquire);
+        if (handle_overflow(local_tail, 1) == 0) {
             return false;
         }
-
-        size_t local_tail = load(tail, std::memory_order_acquire);
 
         buf[local_tail] = item;
 
@@ -95,11 +94,11 @@ public:
     }
 
     bool push_back(T &&item) {
-        if (full()) {
+        size_t local_tail = load(tail, std::memory_order_acquire);
+
+        if (handle_overflow(local_tail, 1) == 0) {
             return false;
         }
-
-        size_t local_tail = load(tail, std::memory_order_acquire);
 
         buf[local_tail] = std::move(item);
 

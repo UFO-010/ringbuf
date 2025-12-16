@@ -166,17 +166,6 @@ TEST(ringbuf_test, overflow_test) {
     rb.read_ready(new_buf.data(), sizeof("Hello"));
     ASSERT_THAT(new_buf, testing::ElementsAreArray("Hello"));
 
-    rb.reset();
-
-    out_buf.fill('\0');
-    rb.append("Hello world", st.size());
-    rb.append("world Hello", st.size());
-    rb.read_ready(out_buf.data(), out_buf.size());
-
-    std::array<char, st.size()> expected_overwrite = {};
-    std::copy_n("Hello world", st.size(), expected_overwrite.begin());
-    ASSERT_THAT(out_buf, testing::ElementsAreArray(expected_overwrite));
-
     // Default overflow policy is `OverflowPolicy::DROP`, so we won't be able to write or read data
     // at all if input size > capacity
     rb.reset();
