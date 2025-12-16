@@ -1,7 +1,10 @@
 
 #include <gtest/gtest.h>
 #include <gmock/gmock.h>
+
 #include "ringbuf.hpp"
+#include "producer.hpp"
+#include "consumer.hpp"
 
 TEST(ringbuf_test, zero_test) {
     constexpr size_t temp_size = 16;

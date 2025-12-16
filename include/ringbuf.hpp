@@ -1,6 +1,5 @@
 
-#ifndef RING_BUFFER_HPP
-#define RING_BUFFER_HPP
+#pragma once
 
 #include <cstddef>
 #include <algorithm>
@@ -9,12 +8,21 @@
 
 #include "blockdata.hpp"
 
+/// FORWARD DECLARATION
 template <typename T, size_t max_size, bool ThreadSafe>
 class ProducerHandler;
 
+/// FORWARD DECLARATION
 template <typename T, size_t max_size, bool ThreadSafe>
 class ConsumerHandler;
 
+/**
+ * @brief The spsc_ringbuf class
+ *
+ * @param T: Element type (any type, trivially copyable preferred for performance)
+ * @param max_size: Ring buffer capacity (must be power of 2)
+ * @param ThreadSafe: If true, uses std::atomic<size_t> for head and tail, else uses size_t
+ */
 template <typename T, size_t max_size, bool ThreadSafe>
 class spsc_ringbuf {
     static_assert((max_size & (max_size - 1)) == 0, "max_size value should be power of 2");
@@ -30,6 +38,11 @@ public:
         return ConsumerHandler<T, max_size, ThreadSafe>(*this);
     }
 
+    /**
+     * @brief reset
+     *
+     * Reset buffer to empty state (NOT thread-safe, call from single thread)
+     */
     void reset() {
         store(head, 0);
         store(tail, 0);
@@ -37,16 +50,20 @@ public:
 
     /**
      * @brief size
-     * @return current number of data stored in buffer
+     * @return Current number of elements stored in buffer
      */
     size_t size() const { return get_data_size(); }
 
     /**
      * @brief capacity
-     * @return size of data buffer can store
+     * @return Get buffer capacity
      */
     size_t capacity() const { return max_size; }
 
+    /**
+     * @brief empty
+     * @return true if buffer is empty
+     */
     bool empty() const { return get_data_size() == 0; }
 
     bool full() const { return get_free_size() == 0; }
@@ -163,7 +180,7 @@ public:
     }
 
     /**
-     * @brief get_full
+     * @brief get_data_size
      * @return Number of T elements in buffer
      *
      *       `head`           `tail`
@@ -187,7 +204,7 @@ public:
     }
 
     /**
-     * @brief get_free
+     * @brief get_free_size
      * @return Number of free T elements in buffer
      */
     size_t get_free_size() const { return max_size - 1 - get_data_size(); }
@@ -299,6 +316,15 @@ public:
     }
 
 private:
+    /**
+     * @brief load
+     * @param var: variable to load it's value from
+     * @param order: memory order for atomic operations.
+     * @return value: stored in `var`
+     *
+     * Wrapper function to load values stored in `head` and `tail` with desired memory order. If
+     * `ThreadSafe` == false, values are loaded directly and `order` is ignored
+     */
     template <typename varType>
     constexpr size_t load(const varType &var,
                           std::memory_order order = std::memory_order_relaxed) const {
@@ -312,9 +338,12 @@ private:
 
     /**
      * @brief store
-     * @param var
-     * @param value new value of `var`
-     * @param order
+     * @param var: variable to store `value` in
+     * @param value: new value of `var`
+     * @param order: memory order for atomic operations.
+     *
+     * Wrapper function to update values stored in `head` and `tail` with desired memory order. If
+     * `ThreadSafe` == false, values are updated directly and `order` is ignored
      */
     template <typename varType>
     constexpr void store(varType &var,
@@ -392,6 +421,9 @@ private:
         return copy_size;
     }
 
+    /// Ring buffer storage (fixed-size, allocated on stack).
+    /// Layout: [0] [1] [2] ... [MaxSize-1] -> wraps to [0].
+    /// Consider using and external data storage
     std::array<T, max_size> buf = {};
 
     /// Conditional type of head and tail. Atomic if ThreadSafe is true.
@@ -404,55 +436,3 @@ private:
     alignas(al) atomic_size head = 0;
     alignas(al) atomic_size tail = 0;
 };
-
-/**
- * @brief The ConsumerHandler class
- *
- * Read only wrapper for `spsc_ringbuf`
- */
-template <typename T, size_t max_size, bool ThreadSafe>
-class ConsumerHandler {
-public:
-    T pop_front() { return rb_.pop_front(); }
-
-    bool pop_front(T &dest) { return rb_.pop_front(dest); }
-
-    size_t read_ready(T *item, size_t size) { return rb_.read_ready(item, size); }
-
-    size_t advance_read_pointer(size_t advance) { return rb_.advance_read_pointer(advance); }
-
-private:
-    friend class spsc_ringbuf<T, max_size, ThreadSafe>;
-
-    spsc_ringbuf<T, max_size, ThreadSafe> &rb_;
-
-    explicit ConsumerHandler(spsc_ringbuf<T, max_size, ThreadSafe> &rb)
-        : rb_(rb) {}
-};
-
-/**
- * @brief The ProducerHandler class
- *
- * Write only wrapper for `spsc_ringbuf`
- */
-template <typename T, size_t max_size, bool ThreadSafe>
-class ProducerHandler {
-public:
-    bool push_back(const T &item) { return rb_.push_back(item); }
-
-    bool push_back(T &&item) { return rb_.push_back(std::move(item)); }
-
-    size_t append(const T *item, size_t size) { return rb_.append(item, size); }
-
-    size_t advance_write_pointer(size_t advance) { return rb_.advance_write_pointer(advance); }
-
-private:
-    friend class spsc_ringbuf<T, max_size, ThreadSafe>;
-
-    spsc_ringbuf<T, max_size, ThreadSafe> &rb_;
-
-    explicit ProducerHandler(spsc_ringbuf<T, max_size, ThreadSafe> &rb)
-        : rb_(rb) {}
-};
-
-#endif
