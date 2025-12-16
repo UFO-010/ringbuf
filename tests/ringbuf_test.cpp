@@ -10,7 +10,7 @@ TEST(ringbuf_test, zero_test) {
     constexpr size_t temp_size = 16;
     constexpr size_t temp = 5;
 
-    spsc_ringbuf<char, temp_size, false> rb;
+    rb::spsc_ringbuf<char, temp_size, false> rb;
     EXPECT_EQ(rb.append(nullptr, temp), 0);
 
     std::array<char, temp> t = {};
@@ -30,7 +30,7 @@ TEST(ringbuf_test, read_test) {
 
     size_t read_num = sizeof("00000000000");
 
-    spsc_ringbuf<char, temp_size, false> rb;
+    rb::spsc_ringbuf<char, temp_size, false> rb;
 
     rb.append("00000000000", read_num);
     std::array<char, temp_size> unused = {};
@@ -51,7 +51,7 @@ TEST(ringbuf_test, read_test) {
 // Remember that we keep 1 character to check overflow
 TEST(ringbuf_test, size_test) {
     constexpr size_t temp_size = 16;
-    spsc_ringbuf<char, temp_size, false> rb;
+    rb::spsc_ringbuf<char, temp_size, false> rb;
 
     std::array<char, temp_size> unused = {};
     constexpr std::string_view st("Hello world", sizeof("Hello world"));
@@ -105,7 +105,7 @@ TEST(ringbuf_test, size_test) {
 
 TEST(ringbuf_test, advance_pointers_test) {
     constexpr size_t temp_size = 4;
-    spsc_ringbuf<int, temp_size, false> rb;
+    rb::spsc_ringbuf<int, temp_size, false> rb;
 
     rb.advance_write_pointer(0);
     rb.advance_read_pointer(0);
@@ -151,7 +151,7 @@ TEST(ringbuf_test, overflow_test) {
     std::array<char, st.size()> out_buf = {};
     out_buf.fill('\0');
 
-    spsc_ringbuf<char, temp_size, false> rb;
+    rb::spsc_ringbuf<char, temp_size, false> rb;
 
     rb.append(st.data(), st.size());
 
@@ -177,15 +177,16 @@ TEST(ringbuf_test, overflow_test) {
     std::copy_n("Hello world", st.size(), expected_overwrite.begin());
     ASSERT_THAT(out_buf, testing::ElementsAreArray(expected_overwrite));
 
-    // We should be able to read and write at least ringbuf capacity
+    // Default overflow policy is `OverflowPolicy::DROP`, so we won't be able to write or read data
+    // at all if input size > capacity
     rb.reset();
     constexpr size_t big_size = 128;
     std::array<char, big_size> big_buf = {};
     big_buf.fill('\0');
     size_t readed = rb.append(big_buf.data(), big_buf.size());
-    EXPECT_EQ(readed, rb.capacity() - 1);
+    EXPECT_EQ(readed, 0);
     readed = rb.read_ready(big_buf.data(), big_buf.size());
-    EXPECT_EQ(readed, rb.capacity() - 1);
+    EXPECT_EQ(readed, 0);
 }
 
 TEST(ringbuf_test, peek_test) {
@@ -193,7 +194,7 @@ TEST(ringbuf_test, peek_test) {
     const size_t skip = 2;
     std::array<size_t, temp_size> test = {};
 
-    spsc_ringbuf<size_t, temp_size, false> rb;
+    rb::spsc_ringbuf<size_t, temp_size, false> rb;
 
     EXPECT_EQ(rb.peek(), {});
     EXPECT_EQ(rb.peek_ready(nullptr, 0), 0);
@@ -256,7 +257,7 @@ TEST(ringbuf_test, linear_block_test) {
     constexpr size_t temp_size = 16;
     constexpr size_t skip = 5;
 
-    spsc_ringbuf<char, temp_size, false> rb;
+    rb::spsc_ringbuf<char, temp_size, false> rb;
 
     auto bl = rb.get_write_linear_block_single();
     EXPECT_EQ(bl.size(), temp_size - 1);
@@ -315,7 +316,7 @@ TEST(ringbuf_test, linear_block_test) {
 
 TEST(ringbuf_test, block_test) {
     constexpr size_t temp_size = 8;
-    spsc_ringbuf<size_t, temp_size, false> rb;
+    rb::spsc_ringbuf<size_t, temp_size, false> rb;
     const size_t skip = 3;
 
     auto read_blocks = rb.get_read_segments();
@@ -400,7 +401,7 @@ TEST(ringbuf_test, push_pop_test) {
     constexpr size_t temp_size = 8;
     const char test_ch = 'H';
 
-    spsc_ringbuf<char, temp_size, false> rb;
+    rb::spsc_ringbuf<char, temp_size, false> rb;
 
     rb.push_back(test_ch);
     char test = 0;
@@ -422,7 +423,7 @@ TEST(ringbuf_test, push_pop_test) {
     EXPECT_EQ(rb.pop_front(), 'A');
     EXPECT_EQ(rb.pop_front(), {});
 
-    spsc_ringbuf<std::string, temp_size, false> st_rb;
+    rb::spsc_ringbuf<std::string, temp_size, false> st_rb;
     std::string st_test = "Hello world";
     st_rb.push_back(st_test);
     EXPECT_EQ(st_rb.pop_front(), st_test);
@@ -454,7 +455,7 @@ TEST(ringbuf_test, push_pop_test) {
 
 TEST(ringbuf_test, move_semantics) {
     constexpr size_t temp_size = 4;
-    spsc_ringbuf<std::string, temp_size, false> rb;
+    rb::spsc_ringbuf<std::string, temp_size, false> rb;
 
     std::string original = "This is a long string that might trigger move semantics";
     // Keep a copy to check original is moved from
@@ -476,10 +477,9 @@ TEST(ringbuf_test, move_semantics) {
 
 TEST(ringbuf_test, producer_consumer_test) {
     constexpr size_t temp_size = 8;
-    const size_t skip = 3;
     const size_t test_ch = 40;
 
-    spsc_ringbuf<size_t, temp_size, false> rb;
+    rb::spsc_ringbuf<size_t, temp_size, false> rb;
     auto producer = rb.get_producer();
     auto consumer = rb.get_consumer();
 

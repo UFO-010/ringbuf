@@ -8,6 +8,8 @@
 
 #include "blockdata.hpp"
 
+namespace rb {
+
 /// FORWARD DECLARATION
 template <typename T, size_t max_size, bool ThreadSafe>
 class ProducerHandler;
@@ -16,6 +18,14 @@ class ProducerHandler;
 template <typename T, size_t max_size, bool ThreadSafe>
 class ConsumerHandler;
 
+/// Overflow handling strategies (selected at compile-time)
+enum class OverflowPolicy {
+    DROP,       ///< Discard new data if buffer is full
+    OVERWRITE,  ///< Overwrite oldest data (advance head)
+    FAIL,       ///< Return 0 elements written (caller handles)
+    TOEND       ///< Writes as much data as possible to the end of buffer
+};
+
 /**
  * @brief The spsc_ringbuf class
  *
@@ -23,7 +33,10 @@ class ConsumerHandler;
  * @param max_size: Ring buffer capacity (must be power of 2)
  * @param ThreadSafe: If true, uses std::atomic<size_t> for head and tail, else uses size_t
  */
-template <typename T, size_t max_size, bool ThreadSafe>
+template <typename T,
+          size_t max_size,
+          bool ThreadSafe,
+          OverflowPolicy Policy = OverflowPolicy::DROP>
 class spsc_ringbuf {
     static_assert((max_size & (max_size - 1)) == 0, "max_size value should be power of 2");
 
@@ -69,11 +82,10 @@ public:
     bool full() const { return get_free_size() == 0; }
 
     bool push_back(const T &item) {
-        if (full()) {
+        size_t local_tail = load(tail, std::memory_order_acquire);
+        if (handle_overflow(local_tail, 1) == 0) {
             return false;
         }
-
-        size_t local_tail = load(tail, std::memory_order_acquire);
 
         buf[local_tail] = item;
 
@@ -85,11 +97,11 @@ public:
     }
 
     bool push_back(T &&item) {
-        if (full()) {
+        size_t local_tail = load(tail, std::memory_order_acquire);
+
+        if (handle_overflow(local_tail, 1) == 0) {
             return false;
         }
-
-        size_t local_tail = load(tail, std::memory_order_acquire);
 
         buf[local_tail] = std::move(item);
 
@@ -358,12 +370,10 @@ private:
     }
 
     size_t buf_store(const size_t local_tail, const T *item, size_t size) {
-        size_t free_data_size = get_free_size(local_tail);
-        if (free_data_size == 0) {
+        size_t copy_size = handle_overflow(local_tail, size);
+        if (copy_size == 0) {
             return 0;
         }
-
-        size_t copy_size = std::min(size, free_data_size);
 
         // Copy linear part
         const T *data_ptr = item;
@@ -421,6 +431,36 @@ private:
         return copy_size;
     }
 
+    size_t handle_overflow(size_t local_tail, size_t requested_size) noexcept {
+        size_t free_space = get_free_size(local_tail);
+
+        if (free_space >= requested_size) {
+            return requested_size;
+        }
+
+        if constexpr (Policy == OverflowPolicy::FAIL) {
+            return 0;
+        } else if constexpr (Policy == OverflowPolicy::DROP) {
+            return 0;
+        } else if constexpr (Policy == OverflowPolicy::TOEND) {
+            size_t space_to_make = std::min(requested_size, free_space);
+            size_t local_head = load(head, std::memory_order_acquire);
+            size_t new_head = (local_head + space_to_make) & mask;
+
+            store(head, new_head, std::memory_order_release);
+
+            return space_to_make;
+        } else if constexpr (Policy == OverflowPolicy::OVERWRITE) {
+            size_t space_to_make = std::min(requested_size, max_size - 1);
+            size_t local_head = load(head, std::memory_order_acquire);
+            size_t new_head = (local_head + space_to_make) & mask;
+
+            store(head, new_head, std::memory_order_release);
+
+            return space_to_make;
+        }
+    }
+
     /// Ring buffer storage (fixed-size, allocated on stack).
     /// Layout: [0] [1] [2] ... [MaxSize-1] -> wraps to [0].
     /// Consider using and external data storage
@@ -436,3 +476,4 @@ private:
     alignas(al) atomic_size head = 0;
     alignas(al) atomic_size tail = 0;
 };
+}  // namespace ringbuf
