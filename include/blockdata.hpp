@@ -1,6 +1,15 @@
 
+#ifndef BLOCKDATA_HPP
+#define BLOCKDATA_HPP
 #include <cstddef>
 
+/**
+ * @brief The LinearBlock class
+ *
+ * Represents a contiguous region in the buffer. Used to represent write/read operations that don't
+ * wrap around the buffer boundary. Allows external code to work directly with buffer memory without
+ * additional copies.
+ */
 template <typename T>
 struct LinearBlock {
     T* ptr = nullptr;
@@ -25,6 +34,14 @@ struct LinearBlock {
     size_t bytes() const noexcept { return b_size * sizeof(T); }
 };
 
+/**
+ * @brief The BufferSegments class
+ *
+ * Represents potential wrap-around in ring buffer. When a read/write operation wraps around the end
+ * of the buffer,it may need to be split into two segments:
+ * - first: data from current position to end of buffer
+ * - second: data from start of buffer (wrap-around)
+ */
 template <typename T>
 struct BufferSegments {
     LinearBlock<T> first;
@@ -44,3 +61,5 @@ struct BufferSegments {
 
     size_t total_bytes() const noexcept { return total_size() * sizeof(T); }
 };
+
+#endif

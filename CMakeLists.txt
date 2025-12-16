@@ -13,6 +13,8 @@ target_compile_features(${PROJECT_NAME}_compiler_flags INTERFACE cxx_std_17)
 add_library(ringbuf INTERFACE
     "${CMAKE_CURRENT_LIST_DIR}/include/ringbuf.hpp"
     "${CMAKE_CURRENT_LIST_DIR}/include/blockdata.hpp"
+    "${CMAKE_CURRENT_LIST_DIR}/include/producer.hpp"
+    "${CMAKE_CURRENT_LIST_DIR}/include/consumer.hpp"
 )
 
 target_include_directories(${PROJECT_NAME} INTERFACE
