@@ -117,6 +117,45 @@ ringbuf::spsc_ringbuf<Data, 1024, true, rb::OverflowPolicy::TOEND> buf3;
 | **FAIL** | Return 0 elements written | Critical systems requiring explicit handling |
 | **TOEND** | Discard new data that does not fit | Sensor data streams, Logging bursts |
 
+### Event Callbacks
+
+Monitor buffer state changes:
+
+```cpp
+buffer.subscribe([](const ringbuf::BufferEvent& evt) {
+    switch (evt.type) {
+        case ringbuf::EventType::DATA_AVAILABLE:
+            printf("Data available: %zu elements\n", evt.current_size);
+            break;
+        case ringbuf::EventType::BUFFER_FULL:
+            printf("Buffer is full!\n");
+            break;
+        case ringbuf::EventType::BUFFER_EMPTY:
+            printf("Buffer is now empty\n");
+            break;
+        case ringbuf::EventType::OVERFLOW:
+            printf("Overflow occurred! Dropped data\n");
+            break;
+        case ringbuf::EventType::RESET:
+            printf("Buffer reset\n");
+            break;
+    }
+});
+```
+
+### Statistics
+
+Track buffer performance:
+
+```cpp
+auto stats = buffer.get_statistics();
+printf("Total pushes: %zu\n", stats.total_pushes);
+printf("Total pops: %zu\n", stats.total_pops);
+printf("Overflow events: %zu\n", stats.overflow_events);
+printf("Peak occupancy: %zu\n", stats.max_occupancy);
+printf("Total bytes written: %lu\n", stats.total_bytes_written);
+printf("Total bytes read: %lu\n", stats.total_bytes_read);
+```
 
 ## Template Parameters
 

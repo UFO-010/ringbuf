@@ -46,6 +46,21 @@ struct BufferEvent {
 
 using EventCallback = std::function<void(const BufferEvent &)>;
 
+struct RingbufStatistics {
+    size_t total_pushes = 0;           ///< Total successful push operations
+    size_t total_pops = 0;             ///< Total successful pop operations
+    size_t overflow_events = 0;        ///< Number of times overflow occurred
+    size_t max_occupancy = 0;          ///< Peak element count in buffer
+    uint64_t total_bytes_written = 0;  ///< Cumulative bytes written
+    uint64_t total_bytes_read = 0;     ///< Cumulative bytes read
+
+    void reset() noexcept {
+        total_pushes = total_pops = overflow_events = 0;
+        max_occupancy = 0;
+        total_bytes_written = total_bytes_read = 0;
+    }
+};
+
 /**
  * @brief The spsc_ringbuf class
  *
@@ -80,6 +95,11 @@ public:
     void reset() {
         store(head, 0);
         store(tail, 0);
+
+        stats.reset();
+        if (!callbacks.empty()) {
+            emit_event_internal(EventType::RESET);
+        }
     }
 
     /**
@@ -120,6 +140,7 @@ public:
         local_tail = (local_tail + 1) & mask;
         store(tail, local_tail, std::memory_order_release);
 
+        stats.total_pushes++;
         emit_event_internal(EventType::DATA_AVAILABLE);
 
         return true;
@@ -144,6 +165,7 @@ public:
         local_tail = (local_tail + 1) & mask;
         store(tail, local_tail, std::memory_order_release);
 
+        stats.total_pushes++;
         emit_event_internal(EventType::DATA_AVAILABLE);
 
         return true;
@@ -169,6 +191,7 @@ public:
         size_t new_tail = (local_tail + copy_size) & mask;
         store(tail, new_tail, std::memory_order_release);
 
+        stats.total_pushes++;
         if (copy_size > 0) {
             emit_event_internal(EventType::DATA_AVAILABLE);
         }
@@ -194,6 +217,8 @@ public:
         local_head = (local_head + 1) & mask;
         store(head, local_head, std::memory_order_release);
 
+        stats.total_pops++;
+
         return item;
     }
 
@@ -215,6 +240,8 @@ public:
 
         local_head = (local_head + 1) & mask;
         store(head, local_head, std::memory_order_release);
+
+        stats.total_pops++;
 
         return true;
     }
@@ -239,6 +266,8 @@ public:
         size_t new_head = (local_head + copy_size) & mask;
 
         store(head, new_head, std::memory_order_release);
+
+        stats.total_pops += copy_size;
 
         if (copy_size == 0) {
             emit_event_internal(EventType::BUFFER_EMPTY);
@@ -334,6 +363,7 @@ public:
         store(tail, new_tail, std::memory_order_release);
 
         emit_event_internal(EventType::DATA_AVAILABLE);
+        stats.total_pushes++;
 
         return (new_tail - local_tail) & mask;
     }
@@ -354,6 +384,9 @@ public:
         size_t new_head = (local_head + advance) & mask;
 
         store(head, new_head, std::memory_order_release);
+
+        stats.total_pops += advance;
+
         return (new_head - local_head) & mask;
     }
 
@@ -366,7 +399,7 @@ public:
      * @note Callbacks are called synchronously from producer/consumer threads
      * Keep callbacks fast to avoid blocking operations
      */
-    bool subscribe(EventCallback callback) noexcept {
+    bool subscribe(const EventCallback &callback) noexcept {
         if (callback_count >= MaxCallbacks) {
             return false;
         }
@@ -492,6 +525,12 @@ public:
 
         return {first_block, second_block};
     }
+
+    /// Get current statistics
+    RingbufStatistics get_statistics() const noexcept { return stats; }
+
+    /// Reset statistics counters
+    void reset_statistics() noexcept { stats.reset(); }
 
 private:
     /**
@@ -647,8 +686,10 @@ private:
             return requested_size;
         }
 
+        stats.overflow_events++;
+        emit_event_internal(EventType::OVERFLOW);
+
         if constexpr (Policy == OverflowPolicy::FAIL) {
-            emit_event_internal(EventType::BUFFER_FULL);
             return 0;
         } else if constexpr (Policy == OverflowPolicy::DROP) {
             return 0;
@@ -704,9 +745,13 @@ private:
     /// Event sequence counter for monotonic event ordering
     size_t event_sequence = 0;
 
+    /// Statistics counters
+    RingbufStatistics stats;
+
     /// Read pointer (where consumer reads from)
     alignas(al) atomic_size head = 0;
     /// Write pointer (where producer writes to)
     alignas(al) atomic_size tail = 0;
 };
+
 }  // namespace rb
