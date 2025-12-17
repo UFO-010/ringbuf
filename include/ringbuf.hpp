@@ -12,11 +12,11 @@
 namespace rb {
 
 /// FORWARD DECLARATION
-template <typename T, size_t max_size, bool ThreadSafe>
+template <typename T, size_t MaxSize, bool ThreadSafe>
 class ProducerHandler;
 
 /// FORWARD DECLARATION
-template <typename T, size_t max_size, bool ThreadSafe>
+template <typename T, size_t MaxSize, bool ThreadSafe>
 class ConsumerHandler;
 
 /// Overflow handling strategies (selected at compile-time)
@@ -69,22 +69,22 @@ struct RingbufStatistics {
  * @param ThreadSafe: If true, uses std::atomic<size_t> for head and tail, else uses size_t
  */
 template <typename T,
-          size_t max_size,
+          size_t MaxSize,
           bool ThreadSafe,
           OverflowPolicy Policy = OverflowPolicy::DROP,
           size_t MaxCallbacks = 4>
 class spsc_ringbuf {
-    static_assert((max_size & (max_size - 1)) == 0, "max_size value should be power of 2");
+    static_assert((MaxSize & (MaxSize - 1)) == 0, "max_size value should be power of 2");
 
 public:
     explicit spsc_ringbuf() = default;
 
-    ProducerHandler<T, max_size, ThreadSafe> get_producer() noexcept {
-        return ProducerHandler<T, max_size, ThreadSafe>(*this);
+    ProducerHandler<T, MaxSize, ThreadSafe> get_producer() noexcept {
+        return ProducerHandler<T, MaxSize, ThreadSafe>(*this);
     }
 
-    ConsumerHandler<T, max_size, ThreadSafe> get_consumer() noexcept {
-        return ConsumerHandler<T, max_size, ThreadSafe>(*this);
+    ConsumerHandler<T, MaxSize, ThreadSafe> get_consumer() noexcept {
+        return ConsumerHandler<T, MaxSize, ThreadSafe>(*this);
     }
 
     /**
@@ -112,7 +112,7 @@ public:
      * @brief capacity
      * @return Get buffer capacity
      */
-    size_t capacity() const { return max_size; }
+    size_t capacity() const { return MaxSize; }
 
     /**
      * @brief empty
@@ -343,7 +343,7 @@ public:
      *
      * Calculate free space in buffer. Reserves 1 element to distinguish empty from full
      */
-    size_t get_free_size() const { return max_size - 1 - get_data_size(); }
+    size_t get_free_size() const { return MaxSize - 1 - get_data_size(); }
 
     /**
      * @brief advance_write_pointer
@@ -409,15 +409,15 @@ public:
         return true;
     }
 
-    // bool subscribe(EventCallback &&callback) noexcept {
-    //     if (callback_count >= MaxCallbacks) {
-    //         return false;
-    //     }
+    bool subscribe(EventCallback &&callback) noexcept {
+        if (callback_count >= MaxCallbacks) {
+            return false;
+        }
 
-    //     callbacks[callback_count] = std::move(callback);
-    //     callback_count++;
-    //     return true;
-    // }
+        callbacks[callback_count] = std::move(callback);
+        callback_count++;
+        return true;
+    }
 
     /**
      * @brief unsubscribe
@@ -493,7 +493,7 @@ public:
             return {{nullptr, 0}, {nullptr, 0}};
         }
 
-        size_t first_size = std::min(free_space, max_size - local_tail);
+        size_t first_size = std::min(free_space, MaxSize - local_tail);
         T *first_ptr = buf.data() + local_tail;
         LinearBlock<T> first_block = {first_ptr, first_size};
 
@@ -522,7 +522,7 @@ public:
             return {{nullptr, 0}, {nullptr, 0}};
         }
 
-        size_t first_size = std::min(data_size, max_size - local_head);
+        size_t first_size = std::min(data_size, MaxSize - local_head);
 
         T *first_ptr = buf.data() + local_head;
         LinearBlock<T> first_block = {first_ptr, first_size};
@@ -602,7 +602,7 @@ private:
 
         // Copy linear part
         const T *data_ptr = item;
-        size_t first_part = std::min(max_size - local_tail, copy_size);
+        size_t first_part = std::min(MaxSize - local_tail, copy_size);
         if constexpr (std::is_trivially_copyable_v<T>) {
             std::memcpy(buf.data() + local_tail, data_ptr, first_part * sizeof(T));
         } else {
@@ -643,7 +643,7 @@ private:
 
         // Copy linear part
         T *data_ptr = item;
-        size_t first_part = std::min(max_size - local_head, copy_size);
+        size_t first_part = std::min(MaxSize - local_head, copy_size);
         if constexpr (std::is_trivially_copyable_v<T>) {
             std::memcpy(data_ptr, buf.data() + local_head, first_part * sizeof(T));
         } else {
@@ -687,7 +687,7 @@ private:
      */
     size_t get_free_size(size_t local_tail) const {
         size_t local_head = load(head, std::memory_order_relaxed);
-        return max_size - 1 - ((local_tail - local_head) & mask);
+        return MaxSize - 1 - ((local_tail - local_head) & mask);
     }
 
     size_t handle_overflow(size_t local_tail, size_t requested_size) noexcept {
@@ -709,7 +709,7 @@ private:
 
             return space_to_make;
         } else if constexpr (Policy == OverflowPolicy::OVERWRITE) {
-            size_t space_to_make = std::min(requested_size, max_size - 1);
+            size_t space_to_make = std::min(requested_size, MaxSize - 1);
             size_t local_head = load(head, std::memory_order_acquire);
             size_t new_head = (local_head + space_to_make) & mask;
 
@@ -743,7 +743,7 @@ private:
     /// Ring buffer storage (fixed-size, allocated on stack).
     /// Layout: [0] [1] [2] ... [MaxSize-1] -> wraps to [0].
     /// Consider using an external data storage
-    std::array<T, max_size> buf = {};
+    std::array<T, MaxSize> buf = {};
 
     /// Event notification callbacks
     std::array<EventCallback, MaxCallbacks> callbacks = {};
@@ -754,7 +754,7 @@ private:
     /// Data alignment of head and tail
     constexpr static int al = 64;
     /// Bitmask we use to check buffer overflow
-    constexpr static size_t mask = (max_size - 1);
+    constexpr static size_t mask = (MaxSize - 1);
     /// Event sequence counter for monotonic event ordering
     size_t event_sequence = 0;
 

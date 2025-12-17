@@ -11,7 +11,7 @@ namespace rb {
  *
  * Read only wrapper for `spsc_ringbuf`
  */
-template <typename T, size_t max_size, bool ThreadSafe>
+template <typename T, size_t MaxSize, bool ThreadSafe>
 class ConsumerHandler {
 public:
     /**
@@ -68,11 +68,11 @@ public:
     BufferSegments<T> get_segments() { return rb_.get_read_segments(); }
 
 private:
-    friend class spsc_ringbuf<T, max_size, ThreadSafe>;
+    friend class spsc_ringbuf<T, MaxSize, ThreadSafe>;
 
-    spsc_ringbuf<T, max_size, ThreadSafe> &rb_;
+    spsc_ringbuf<T, MaxSize, ThreadSafe> &rb_;
 
-    explicit ConsumerHandler(spsc_ringbuf<T, max_size, ThreadSafe> &rb)
+    explicit ConsumerHandler(spsc_ringbuf<T, MaxSize, ThreadSafe> &rb)
         : rb_(rb) {}
 };
 

@@ -11,7 +11,7 @@ namespace rb {
  *
  * Write only wrapper for `spsc_ringbuf`
  */
-template <typename T, size_t max_size, bool ThreadSafe>
+template <typename T, size_t MaxSize, bool ThreadSafe>
 class ProducerHandler {
 public:
     /**
@@ -70,11 +70,11 @@ public:
     BufferSegments<T> get_segments() { return rb_.get_write_segments(); }
 
 private:
-    friend class spsc_ringbuf<T, max_size, ThreadSafe>;
+    friend class spsc_ringbuf<T, MaxSize, ThreadSafe>;
 
-    spsc_ringbuf<T, max_size, ThreadSafe> &rb_;
+    spsc_ringbuf<T, MaxSize, ThreadSafe> &rb_;
 
-    explicit ProducerHandler(spsc_ringbuf<T, max_size, ThreadSafe> &rb)
+    explicit ProducerHandler(spsc_ringbuf<T, MaxSize, ThreadSafe> &rb)
         : rb_(rb) {}
 };
 

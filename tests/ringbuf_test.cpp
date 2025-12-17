@@ -253,7 +253,7 @@ TEST(ringbuf_test, peek_test) {
     }
 }
 
-TEST(ringbuf_test, linear_block_test) {
+TEST(ringbuf_test, LinearBlockObtain) {
     constexpr size_t temp_size = 16;
     constexpr size_t skip = 5;
 
@@ -314,7 +314,7 @@ TEST(ringbuf_test, linear_block_test) {
     EXPECT_EQ(bl.end(), nullptr);
 }
 
-TEST(ringbuf_test, block_test) {
+TEST(ringbuf_test, BlockDataObtain) {
     constexpr size_t temp_size = 8;
     rb::spsc_ringbuf<size_t, temp_size, false> rb;
     const size_t skip = 3;
@@ -475,7 +475,7 @@ TEST(ringbuf_test, move_semantics) {
     EXPECT_TRUE(rb.empty());
 }
 
-TEST(ringbuf_test, producer_consumer_test) {
+TEST(ringbuf_test, ProducerConsumer) {
     constexpr size_t temp_size = 8;
     const size_t test_ch = 40;
 
@@ -593,9 +593,9 @@ TEST(ringbuf_test, OverflowCallback) {
     EXPECT_EQ(rb.get_statistics().overflow_events, 1);
 }
 
-TEST(ringbuftest, CallbackSubscription_MaxCallbacks) {
+TEST(ringbuf_test, CallbackSubscription_MaxCallbacks) {
     constexpr size_t tempsize = 8;
-    int cb_count = 5;
+    const size_t cb_count = 5;
     rb::spsc_ringbuf<int, tempsize, false> rb;
 
     std::vector<std::vector<rb::BufferEvent>> all_events(cb_count);
@@ -616,8 +616,84 @@ TEST(ringbuftest, CallbackSubscription_MaxCallbacks) {
 
     // Add data and verify all 4 callbacks got event
     rb.push_back(1);
-    for (size_t i = 0; i < 4; ++i) {
+    for (size_t i = 0; i < cb_count - 1; ++i) {
         EXPECT_EQ(all_events.at(i).size(), 1);
         EXPECT_EQ(all_events.at(i).at(0).type, rb::EventType::DATA_AVAILABLE);
     }
+}
+
+TEST(ringbuf_test, Statistics_TotalPushes) {
+    constexpr size_t tempsize = 8;
+    rb::spsc_ringbuf<int, tempsize, false> rb;
+
+    EXPECT_EQ(rb.get_statistics().total_pushes, 0);
+
+    rb.push_back(1);
+    EXPECT_EQ(rb.get_statistics().total_pushes, 1);
+
+    rb.push_back(2);
+    EXPECT_EQ(rb.get_statistics().total_pushes, 2);
+
+    std::array<int, 3> data = {3, 4, 5};
+    rb.append(data.data(), 3);
+    EXPECT_EQ(rb.get_statistics().total_pushes, 3);  // append is one operation
+}
+
+TEST(ringbuf_test, Statistics_TotalPops) {
+    constexpr size_t tempsize = 8;
+    rb::spsc_ringbuf<int, tempsize, false> rb;
+
+    std::array<int, 3> data = {1, 2, 3};
+    rb.append(data.data(), data.size());
+
+    EXPECT_EQ(rb.get_statistics().total_pops, 0);
+
+    int val = rb.pop_front();
+    EXPECT_EQ(rb.get_statistics().total_pops, 1);
+
+    rb.pop_front(val);
+    EXPECT_EQ(rb.get_statistics().total_pops, 2);
+
+    std::array<int, 2> vals = {};
+    rb.read_ready(vals.data(), 2);
+    EXPECT_EQ(rb.get_statistics().total_pops, 3);
+}
+
+TEST(ringbuf_test, Statistics_OverflowEvents) {
+    constexpr size_t tempsize = 4;
+    rb::spsc_ringbuf<int, tempsize, false, rb::OverflowPolicy::DROP> rb;
+
+    EXPECT_EQ(rb.get_statistics().overflow_events, 0);
+
+    // Fill buffer
+    for (int i = 0; i < tempsize - 1; ++i) {
+        rb.push_back(i);
+    }
+    EXPECT_EQ(rb.get_statistics().overflow_events, 0);
+
+    // Trigger overflow
+    rb.push_back(99);
+    EXPECT_EQ(rb.get_statistics().overflow_events, 1);
+
+    // Try again
+    rb.push_back(100);
+    EXPECT_EQ(rb.get_statistics().overflow_events, 2);
+}
+
+TEST(ringbuf_test, Statistics_Reset) {
+    constexpr size_t tempsize = 8;
+    rb::spsc_ringbuf<int, tempsize, false> rb;
+
+    rb.push_back(1);
+    int val = rb.pop_front();
+    (void)val;
+
+    EXPECT_EQ(rb.get_statistics().total_pushes, 1);
+    EXPECT_EQ(rb.get_statistics().total_pops, 1);
+
+    rb.reset_statistics();
+
+    EXPECT_EQ(rb.get_statistics().total_pushes, 0);
+    EXPECT_EQ(rb.get_statistics().total_pops, 0);
+    EXPECT_EQ(rb.get_statistics().overflow_events, 0);
 }
