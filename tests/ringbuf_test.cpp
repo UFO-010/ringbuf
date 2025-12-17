@@ -498,3 +498,126 @@ TEST(ringbuf_test, producer_consumer_test) {
     EXPECT_EQ(consumer.advance_read_pointer(rb.capacity() - 1), rb.capacity() - 1);
     EXPECT_EQ(consumer.pop_front(), {});
 }
+
+TEST(ringbuf_test, OverflowPolicy_DROP) {
+    constexpr size_t tempsize = 4;
+    rb::spsc_ringbuf<size_t, tempsize, false, rb::OverflowPolicy::DROP> rb;
+    for (size_t i = 0; i < tempsize - 1; i++) {
+        rb.push_back(i);
+    }
+
+    EXPECT_FALSE(rb.push_back(99));  // Should fail silently
+    EXPECT_EQ(rb.get_data_size(), tempsize - 1);
+    EXPECT_EQ(rb.get_statistics().overflow_events, 1);  // Overflow event counted
+}
+
+TEST(ringbuf_test, OverflowPolicy_FAIL) {
+    constexpr size_t tempsize = 4;
+    rb::spsc_ringbuf<size_t, tempsize, false, rb::OverflowPolicy::FAIL> rb;
+    for (size_t i = 0; i < tempsize - 1; i++) {
+        rb.push_back(i);
+    }
+    EXPECT_FALSE(rb.push_back(99));  // Returns false on overflow
+    EXPECT_EQ(rb.get_data_size(), tempsize - 1);
+}
+
+TEST(ringbuf_test, OverflowPolicy_OVERWRITE) {
+    constexpr size_t tempsize = 4;
+    rb::spsc_ringbuf<size_t, tempsize, false, rb::OverflowPolicy::OVERWRITE> rb;
+    for (size_t i = 0; i < tempsize - 1; i++) {
+        rb.push_back(i);
+    }
+
+    EXPECT_TRUE(rb.push_back(99));  // Overwrites oldest (0)
+    EXPECT_EQ(rb.get_data_size(), tempsize - 1);
+
+    size_t oldest = 0;
+    rb.pop_front(oldest);
+    EXPECT_EQ(oldest, 1);  // 0 overwritten
+    EXPECT_EQ(rb.get_statistics().overflow_events, 1);
+}
+
+TEST(ringbuf_test, OverflowPolicy_TOEND) {
+    constexpr size_t tempsize = 4;
+    size_t first_write = tempsize - 2;
+    rb::spsc_ringbuf<size_t, tempsize, false, rb::OverflowPolicy::TOEND> rb;
+    for (size_t i = 0; i < first_write; i++) {
+        rb.push_back(i);
+    }
+
+    std::array<size_t, 3> temp = {1, 2, 3};
+    size_t written = rb.append(temp.data(), temp.size());  // Partial write to end
+    EXPECT_LT(written, 3u);
+    EXPECT_EQ(written, tempsize - first_write - 1);  // No space, writes 0
+    EXPECT_EQ(rb.get_data_size(), tempsize - 1);
+}
+
+TEST(ringbuf_test, CallbackSubscription) {
+    constexpr size_t tempsize = 8;
+    rb::spsc_ringbuf<int, tempsize, false, rb::OverflowPolicy::DROP, 2> rb;
+
+    std::vector<rb::BufferEvent> events1;
+    std::vector<rb::BufferEvent> events2;
+
+    EXPECT_TRUE(rb.subscribe([&events1](const rb::BufferEvent& evt) { events1.push_back(evt); }));
+    EXPECT_TRUE(rb.subscribe([&events2](const rb::BufferEvent& evt) { events2.push_back(evt); }));
+    EXPECT_FALSE(rb.subscribe([&events1](const rb::BufferEvent& evt) { events1.push_back(evt); }));
+
+    rb.push_back(1);  // Triggers DATA_AVAILABLE
+    EXPECT_EQ(events1.at(0).type, rb::EventType::DATA_AVAILABLE);
+    EXPECT_EQ(events1.at(0).current_size, 1);
+    EXPECT_EQ(events1.at(0).free_space, tempsize - 2);
+
+    EXPECT_TRUE(rb.unsubscribe(1));  // Remove capture2
+    rb.reset();                      // Triggers RESET
+    EXPECT_EQ(events1.size(), 2);
+    EXPECT_EQ(events1.at(1).type, rb::EventType::RESET);
+    EXPECT_EQ(events2.size(), 1);  // capture2 shouldn't get RESET
+}
+
+TEST(ringbuf_test, OverflowCallback) {
+    constexpr size_t tempsize = 4;
+    rb::spsc_ringbuf<int, tempsize, false, rb::OverflowPolicy::OVERWRITE> rb;
+
+    std::vector<rb::BufferEvent> events;
+    EXPECT_TRUE(rb.subscribe([&events](const rb::BufferEvent& evt) { events.push_back(evt); }));
+
+    for (int i = 0; i < tempsize; ++i) {
+        rb.push_back(i);  // Fill + overflow
+    }
+
+    EXPECT_GE(events.size(), 1);
+    // Since Policy is OVERWRITE, callback should throw OVERFLOW event and then DATA_AVAILABLE event
+    EXPECT_EQ(events.at(tempsize - 1).type, rb::EventType::OVERFLOW);
+    EXPECT_EQ(events.back().type, rb::EventType::DATA_AVAILABLE);
+    EXPECT_EQ(rb.get_statistics().overflow_events, 1);
+}
+
+TEST(ringbuftest, CallbackSubscription_MaxCallbacks) {
+    constexpr size_t tempsize = 8;
+    int cb_count = 5;
+    rb::spsc_ringbuf<int, tempsize, false> rb;
+
+    std::vector<std::vector<rb::BufferEvent>> all_events(cb_count);
+
+    // Try to subscribe 5 callbacks (should succeed 4 times)
+    for (size_t i = 0; i < cb_count; ++i) {
+        size_t idx = i;
+        bool result = rb.subscribe([&all_events, idx](const rb::BufferEvent& evt) {
+            if (idx < 4) all_events[idx].push_back(evt);
+        });
+
+        if (i < 4) {
+            EXPECT_TRUE(result);
+        } else {
+            EXPECT_FALSE(result);
+        }
+    }
+
+    // Add data and verify all 4 callbacks got event
+    rb.push_back(1);
+    for (size_t i = 0; i < 4; ++i) {
+        EXPECT_EQ(all_events.at(i).size(), 1);
+        EXPECT_EQ(all_events.at(i).at(0).type, rb::EventType::DATA_AVAILABLE);
+    }
+}
