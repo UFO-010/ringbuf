@@ -519,10 +519,13 @@ TEST(ringbuf_test, OverflowPolicy_FAIL) {
     }
     EXPECT_FALSE(rb.push_back(99));  // Returns false on overflow
     EXPECT_EQ(rb.get_data_size(), tempsize - 1);
+    EXPECT_EQ(rb.get_statistics().overflow_events, 1);
 }
 
 TEST(ringbuf_test, OverflowPolicy_OVERWRITE) {
     constexpr size_t tempsize = 4;
+    const size_t over_start = 5;
+    const size_t over_end = over_start + 5;
     rb::spsc_ringbuf<size_t, tempsize, false, rb::OverflowPolicy::OVERWRITE> rb;
     for (size_t i = 0; i < tempsize - 1; i++) {
         rb.push_back(i);
@@ -535,6 +538,23 @@ TEST(ringbuf_test, OverflowPolicy_OVERWRITE) {
     rb.pop_front(oldest);
     EXPECT_EQ(oldest, 1);  // 0 overwritten
     EXPECT_EQ(rb.get_statistics().overflow_events, 1);
+
+    for (size_t i = over_start; i < over_end; ++i) {
+        EXPECT_TRUE(rb.push_back(i));
+    }
+
+    // Should have 5 overflow events (one per overwrite)
+    EXPECT_EQ(rb.get_statistics().overflow_events, over_end - over_start);
+
+    // Should have 8 total pushes (3 initial + 5 overwrites)
+    EXPECT_EQ(rb.get_statistics().total_pushes, tempsize + (over_end - over_start));
+
+    // Buffer should contain last 3 values: 12, 13, 14
+    std::array<size_t, 3> vals = {};
+    rb.read_ready(vals.data(), 3);
+    EXPECT_EQ(vals[0], over_end - 3);
+    EXPECT_EQ(vals[1], over_end - 2);
+    EXPECT_EQ(vals[2], over_end - 1);
 }
 
 TEST(ringbuf_test, OverflowPolicy_TOEND) {
