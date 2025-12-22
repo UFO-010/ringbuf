@@ -431,8 +431,8 @@ public:
             return false;
         }
 
-        callbacks[index] = std::move(callbacks[callback_count]);
         callback_count--;
+        callbacks[index] = std::move(callbacks[callback_count]);
         return true;
     }
 
