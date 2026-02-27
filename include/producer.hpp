@@ -1,6 +1,5 @@
 
-#ifndef _RB_PRODUCER_HPP
-#define _RB_PRODUCER_HPP
+#pragma once
 
 #include "ringbuf.hpp"
 
@@ -79,4 +78,3 @@ private:
 };
 
 }  // namespace rb
-#endif

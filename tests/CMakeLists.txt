@@ -8,7 +8,6 @@ project(spsc_test LANGUAGES C CXX)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-
 set(SOURCES
     "${CMAKE_CURRENT_LIST_DIR}/ringbuf_test.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/ringbuf_thread_safe_test.cpp"
@@ -43,3 +42,8 @@ gtest_discover_tests(${PROJECT_NAME}
 )
 
 add_test(NAME Test COMMAND ${PROJECT_NAME})
+
+target_compile_definitions(ringbuf INTERFACE
+  RB_ENABLE_STATS=1
+  RB_ENABLE_CALLBACKS=1
+)

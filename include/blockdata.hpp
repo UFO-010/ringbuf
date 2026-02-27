@@ -1,6 +1,5 @@
 
-#ifndef BLOCKDATA_HPP
-#define BLOCKDATA_HPP
+#pragma once
 #include <cstddef>
 
 /**
@@ -61,5 +60,3 @@ struct BufferSegments {
 
     size_t total_bytes() const noexcept { return total_size() * sizeof(T); }
 };
-
-#endif

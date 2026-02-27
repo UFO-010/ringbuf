@@ -9,6 +9,14 @@
 
 #include "blockdata.hpp"
 
+#ifndef RB_ENABLE_STATS
+    #define RB_ENABLE_STATS 0
+#endif
+
+#ifndef RB_ENABLE_CALLBACKS
+    #define RB_ENABLE_CALLBACKS 0
+#endif
+
 namespace rb {
 
 /// FORWARD DECLARATION
@@ -139,8 +147,9 @@ public:
 
         local_tail = (local_tail + 1) & mask;
         store(tail, local_tail, std::memory_order_release);
-
-        stats.total_pushes++;
+        if constexpr (RB_ENABLE_STATS) {
+            stats.total_pushes++;
+        }
         emit_event_internal(EventType::DATA_AVAILABLE);
 
         return true;
@@ -164,8 +173,9 @@ public:
 
         local_tail = (local_tail + 1) & mask;
         store(tail, local_tail, std::memory_order_release);
-
-        stats.total_pushes++;
+        if constexpr (RB_ENABLE_STATS) {
+            stats.total_pushes++;
+        }
         emit_event_internal(EventType::DATA_AVAILABLE);
 
         return true;
@@ -190,8 +200,9 @@ public:
 
         size_t new_tail = (local_tail + copy_size) & mask;
         store(tail, new_tail, std::memory_order_release);
-
-        stats.total_pushes++;
+        if constexpr (RB_ENABLE_STATS) {
+            stats.total_pushes++;
+        }
         if (copy_size > 0) {
             emit_event_internal(EventType::DATA_AVAILABLE);
         }
@@ -216,8 +227,9 @@ public:
 
         local_head = (local_head + 1) & mask;
         store(head, local_head, std::memory_order_release);
-
-        stats.total_pops++;
+        if constexpr (RB_ENABLE_STATS) {
+            stats.total_pops++;
+        }
 
         return item;
     }
@@ -240,8 +252,9 @@ public:
 
         local_head = (local_head + 1) & mask;
         store(head, local_head, std::memory_order_release);
-
-        stats.total_pops++;
+        if constexpr (RB_ENABLE_STATS) {
+            stats.total_pops++;
+        }
 
         return true;
     }
@@ -266,9 +279,9 @@ public:
         size_t new_head = (local_head + copy_size) & mask;
 
         store(head, new_head, std::memory_order_release);
-
-        stats.total_pops += copy_size;
-
+        if constexpr (RB_ENABLE_STATS) {
+            stats.total_pops += copy_size;
+        }
         if (copy_size == 0) {
             emit_event_internal(EventType::BUFFER_EMPTY);
         }
@@ -363,7 +376,9 @@ public:
         store(tail, new_tail, std::memory_order_release);
 
         emit_event_internal(EventType::DATA_AVAILABLE);
-        stats.total_pushes++;
+        if constexpr (RB_ENABLE_STATS) {
+            stats.total_pushes++;
+        }
 
         return (new_tail - local_tail) & mask;
     }
@@ -384,8 +399,9 @@ public:
         size_t new_head = (local_head + advance) & mask;
 
         store(head, new_head, std::memory_order_release);
-
-        stats.total_pops += advance;
+        if constexpr (RB_ENABLE_STATS) {
+            stats.total_pops += advance;
+        }
 
         return (new_head - local_head) & mask;
     }
@@ -400,6 +416,10 @@ public:
      * Keep callbacks fast to avoid blocking operations
      */
     bool subscribe(const EventCallback &callback) noexcept {
+        if constexpr (!RB_ENABLE_CALLBACKS) {
+            return false;
+        }
+
         if (callback_count >= MaxCallbacks) {
             return false;
         }
@@ -410,6 +430,10 @@ public:
     }
 
     bool subscribe(EventCallback &&callback) noexcept {
+        if constexpr (!RB_ENABLE_CALLBACKS) {
+            return false;
+        }
+
         if (callback_count >= MaxCallbacks) {
             return false;
         }
@@ -427,6 +451,10 @@ public:
      * Unsubscribe from buffer events
      */
     bool unsubscribe(size_t index) noexcept {
+        if constexpr (!RB_ENABLE_CALLBACKS) {
+            return false;
+        }
+
         if (index >= callback_count) {
             return false;
         }
@@ -711,7 +739,7 @@ private:
             return space_to_make;
         } else if constexpr (Policy == OverflowPolicy::OVERWRITE) {
             size_t space_to_make = std::min(requested_size, MaxSize - 1);
-            size_t local_head = load(head, std::memory_order_acquire);
+            size_t local_head = load(head, std::memory_order_relaxed);
             size_t new_head = (local_head + space_to_make) & mask;
 
             store(head, new_head, std::memory_order_release);
@@ -727,12 +755,16 @@ private:
      * Emit event to all subscribers
      */
     void emit_event_internal(EventType type) noexcept {
-        if (callback_count == 0) return;
+        if constexpr (!RB_ENABLE_CALLBACKS) {
+            return;
+        }
 
-        BufferEvent evt{.type = type,
-                        .current_size = get_data_size(),
-                        .free_space = get_free_size(),
-                        .sequence_number = event_sequence++};
+        if (callback_count == 0) {
+            return;
+        }
+
+        event_sequence++;
+        BufferEvent evt{type, get_data_size(), get_free_size(), event_sequence};
 
         for (size_t i = 0; i < callback_count; ++i) {
             if (callbacks[i]) {
