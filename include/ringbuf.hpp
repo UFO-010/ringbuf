@@ -37,11 +37,11 @@ enum class OverflowPolicy {
 
 /// Event types for notifications
 enum class EventType {
-    DATA_AVAILABLE,  ///< New data written (threshold exceeded or buffer had data)
-    BUFFER_FULL,     ///< Buffer capacity exhausted
-    BUFFER_EMPTY,    ///< All data consumed
-    OVERFLOW,        ///< Overflow policy triggered
-    RESET            ///< Buffer reset called
+    DATA_AVAILABLE,   ///< New data written (threshold exceeded or buffer had data)
+    BUFFER_FULL,      ///< Buffer capacity exhausted
+    BUFFER_EMPTY,     ///< All data consumed
+    BUFFER_OVERFLOW,  ///< Overflow policy triggered
+    RESET             ///< Buffer reset called
 };
 
 /// Event notification structure
@@ -727,7 +727,7 @@ private:
         }
 
         stats.overflow_events++;
-        emit_event_internal(EventType::OVERFLOW);
+        emit_event_internal(EventType::BUFFER_OVERFLOW);
 
         if constexpr (Policy == OverflowPolicy::FAIL) {
             return 0;

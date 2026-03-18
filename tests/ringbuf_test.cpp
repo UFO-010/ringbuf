@@ -608,7 +608,7 @@ TEST(ringbuf_test, OverflowCallback) {
 
     EXPECT_GE(events.size(), 1);
     // Since Policy is OVERWRITE, callback should throw OVERFLOW event and then DATA_AVAILABLE event
-    EXPECT_EQ(events.at(tempsize - 1).type, rb::EventType::OVERFLOW);
+    EXPECT_EQ(events.at(tempsize - 1).type, rb::EventType::BUFFER_OVERFLOW);
     EXPECT_EQ(events.back().type, rb::EventType::DATA_AVAILABLE);
     EXPECT_EQ(rb.get_statistics().overflow_events, 1);
 }
