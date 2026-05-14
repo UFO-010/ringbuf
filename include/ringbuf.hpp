@@ -5,7 +5,6 @@
 #include <algorithm>
 #include <atomic>
 #include <cstring>
-#include <functional>
 
 #include "blockdata.hpp"
 
@@ -52,7 +51,7 @@ struct BufferEvent {
     uint64_t sequence_number;  ///< Monotonic event sequence counter
 };
 
-using EventCallback = std::function<void(const BufferEvent &)>;
+using EventCallback = void (*)(const BufferEvent &, void *) noexcept;
 
 struct RingbufStatistics {
     size_t total_pushes = 0;           ///< Total successful push operations
@@ -114,21 +113,21 @@ public:
      * @brief size
      * @return Current number of elements stored in buffer
      */
-    size_t size() const { return get_data_size(); }
+    size_t size() const noexcept { return get_data_size(); }
 
     /**
      * @brief capacity
      * @return Get buffer capacity
      */
-    size_t capacity() const { return MaxSize; }
+    size_t capacity() const noexcept { return MaxSize; }
 
     /**
      * @brief empty
      * @return true if buffer is empty
      */
-    bool empty() const { return get_data_size() == 0; }
+    bool empty() const noexcept { return get_data_size() == 0; }
 
-    bool full() const { return get_free_size() == 0; }
+    bool full() const noexcept { return get_free_size() == 0; }
 
     /**
      * @brief push_back
@@ -295,7 +294,7 @@ public:
      *
      * Peek at first element without removing and moving read pointer
      */
-    T peek() const {
+    T peek() const noexcept {
         size_t local_head = load(head, std::memory_order_relaxed);
         if (get_data_size(local_head) == 0) {
             return {};
@@ -311,7 +310,7 @@ public:
      *
      * Peek at elements without removing and moving read pointer
      */
-    size_t peek_ready(T *item, size_t size) {
+    size_t peek_ready(T *item, size_t size) noexcept {
         if (size == 0 || item == nullptr) {
             return 0;
         }
@@ -343,7 +342,7 @@ public:
      * Calculate number of elements available for reading. Uses relaxed memory order - approximate
      * value
      */
-    size_t get_data_size() const {
+    size_t get_data_size() const noexcept {
         size_t local_head = load(head, std::memory_order_relaxed);
         size_t local_tail = load(tail, std::memory_order_relaxed);
 
@@ -390,7 +389,7 @@ public:
      *
      * Advance read pointer after manual buffer read
      */
-    size_t advance_read_pointer(size_t advance) {
+    size_t advance_read_pointer(size_t advance) noexcept {
         if (advance == 0 || empty()) {
             return 0;
         }
@@ -415,7 +414,8 @@ public:
      * @note Callbacks are called synchronously from producer/consumer threads
      * Keep callbacks fast to avoid blocking operations
      */
-    bool subscribe(const EventCallback &callback) noexcept {
+    template <typename ContextType>
+    bool subscribe(ContextType *context, EventCallback callback) noexcept {
         if constexpr (!RB_ENABLE_CALLBACKS) {
             return false;
         }
@@ -424,24 +424,25 @@ public:
             return false;
         }
 
-        callbacks[callback_count] = callback;
+        callbacks[callback_count].fn = callback;
+        callbacks[callback_count].user_data = static_cast<void *>(context);
         callback_count++;
         return true;
     }
 
-    bool subscribe(EventCallback &&callback) noexcept {
-        if constexpr (!RB_ENABLE_CALLBACKS) {
-            return false;
-        }
+    // bool subscribe(EventCallback &&callback) noexcept {
+    //     if constexpr (!RB_ENABLE_CALLBACKS) {
+    //         return false;
+    //     }
 
-        if (callback_count >= MaxCallbacks) {
-            return false;
-        }
+    //     if (callback_count >= MaxCallbacks) {
+    //         return false;
+    //     }
 
-        callbacks[callback_count] = std::move(callback);
-        callback_count++;
-        return true;
-    }
+    //     callbacks[callback_count] = std::move(callback);
+    //     callback_count++;
+    //     return true;
+    // }
 
     /**
      * @brief unsubscribe
@@ -470,7 +471,7 @@ public:
      *
      * Get contiguous write-available segment. Allows zero-copy write operations
      */
-    LinearBlock<T> get_write_linear_block_single() {
+    LinearBlock<T> get_write_linear_block_single() noexcept {
         size_t local_tail = load(tail, std::memory_order_acquire);
 
         size_t free_space = get_free_size(local_tail);
@@ -491,7 +492,7 @@ public:
      *
      * Get single contiguous read segment
      */
-    LinearBlock<T> get_read_linear_block_single() {
+    LinearBlock<T> get_read_linear_block_single() noexcept {
         size_t local_head = load(head, std::memory_order_acquire);
 
         size_t data_size = get_data_size(local_head);
@@ -513,7 +514,7 @@ public:
      * Get write segments (handles wrap-around). Allows direct access to buffer memory for zero-copy
      * operations
      */
-    BufferSegments<T> get_write_segments() {
+    BufferSegments<T> get_write_segments() noexcept {
         size_t local_tail = load(tail, std::memory_order_acquire);
 
         size_t free_space = get_free_size(local_tail);
@@ -543,7 +544,7 @@ public:
      * Get read segments (handles wrap-around). Allows direct access to buffer memory for direct
      * copy operations
      */
-    BufferSegments<T> get_read_segments() {
+    BufferSegments<T> get_read_segments() noexcept {
         size_t local_head = load(head, std::memory_order_acquire);
         size_t data_size = get_data_size(local_head);
 
@@ -573,6 +574,11 @@ public:
     void reset_statistics() noexcept { stats.reset(); }
 
 private:
+    struct CallbackSlot {
+        EventCallback fn = nullptr;
+        void *user_data = nullptr;
+    };
+
     /**
      * @brief load
      * @param var: variable to load it's value from
@@ -584,7 +590,7 @@ private:
      */
     template <typename varType>
     constexpr size_t load(const varType &var,
-                          std::memory_order order = std::memory_order_relaxed) const {
+                          std::memory_order order = std::memory_order_relaxed) const noexcept {
         if constexpr (ThreadSafe) {
             return var.load(order);
         } else {
@@ -605,7 +611,7 @@ private:
     template <typename varType>
     constexpr void store(varType &var,
                          size_t value,
-                         std::memory_order order = std::memory_order_relaxed) const {
+                         std::memory_order order = std::memory_order_relaxed) const noexcept {
         if constexpr (ThreadSafe) {
             var.store(value, order);
         } else {
@@ -662,7 +668,7 @@ private:
      *
      * Read data from buffer
      */
-    size_t buf_read(const size_t local_head, T *item, const size_t size) {
+    size_t buf_read(const size_t local_head, T *item, const size_t size) noexcept {
         size_t full_data_size = get_data_size(local_head);
         if (full_data_size == 0) {
             return 0;
@@ -701,7 +707,7 @@ private:
      *
      * Calculate number of elements available for reading given a specific head position
      */
-    size_t get_data_size(size_t local_head) const {
+    size_t get_data_size(size_t local_head) const noexcept {
         size_t local_tail = load(tail, std::memory_order_relaxed);
         return (local_tail - local_head) & mask;
     }
@@ -714,12 +720,12 @@ private:
      * Calculate free space given a specific tail position. Reserves 1 element to distinguish empty
      * from full
      */
-    size_t get_free_size(size_t local_tail) const {
+    size_t get_free_size(size_t local_tail) const noexcept {
         size_t local_head = load(head, std::memory_order_relaxed);
         return MaxSize - 1 - ((local_tail - local_head) & mask);
     }
 
-    size_t handle_overflow(size_t local_tail, size_t requested_size) noexcept {
+    size_t handle_overflow(size_t local_tail, size_t requested_size) {
         size_t free_space = get_free_size(local_tail);
 
         if (free_space >= requested_size) {
@@ -754,7 +760,7 @@ private:
      *
      * Emit event to all subscribers
      */
-    void emit_event_internal(EventType type) noexcept {
+    void emit_event_internal(EventType type) {
         if constexpr (!RB_ENABLE_CALLBACKS) {
             return;
         }
@@ -767,8 +773,8 @@ private:
         BufferEvent evt{type, get_data_size(), get_free_size(), event_sequence};
 
         for (size_t i = 0; i < callback_count; ++i) {
-            if (callbacks[i]) {
-                callbacks[i](evt);
+            if (callbacks[i].fn != nullptr) {
+                callbacks[i].fn(evt, callbacks[i].user_data);
             }
         }
     }
@@ -779,7 +785,7 @@ private:
     std::array<T, MaxSize> buf = {};
 
     /// Event notification callbacks
-    std::array<EventCallback, MaxCallbacks> callbacks = {};
+    std::array<CallbackSlot, MaxCallbacks> callbacks = {};
     size_t callback_count = 0;
 
     /// Conditional type of head and tail. Atomic if ThreadSafe is true.
