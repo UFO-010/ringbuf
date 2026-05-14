@@ -40,7 +40,8 @@ enum class EventType {
     BUFFER_FULL,      ///< Buffer capacity exhausted
     BUFFER_EMPTY,     ///< All data consumed
     BUFFER_OVERFLOW,  ///< Overflow policy triggered
-    RESET             ///< Buffer reset called
+    RESET,            ///< Buffer reset called
+    _COUNT            ///< Total number of events
 };
 
 /// Event notification structure
@@ -72,14 +73,14 @@ struct RingbufStatistics {
  * @brief The spsc_ringbuf class
  *
  * @param T: Element type (any type, trivially copyable preferred for performance)
- * @param max_size: Ring buffer capacity (must be power of 2)
- * @param ThreadSafe: If true, uses std::atomic<size_t> for head and tail, else uses size_t
+ * @param MaxSize: Ring buffer capacity (must be power of 2)
+ * @param ThreadSafe: If true, rb performs thread safe operations, false by default
+ * @param Policy: Description of stategy to handle overflow, `DROP` by default
  */
 template <typename T,
           size_t MaxSize,
-          bool ThreadSafe,
-          OverflowPolicy Policy = OverflowPolicy::DROP,
-          size_t MaxCallbacks = 4>
+          bool ThreadSafe = false,
+          OverflowPolicy Policy = OverflowPolicy::DROP>
 class spsc_ringbuf {
     static_assert((MaxSize & (MaxSize - 1)) == 0, "max_size value should be power of 2");
 
@@ -415,53 +416,19 @@ public:
      * Keep callbacks fast to avoid blocking operations
      */
     template <typename ContextType>
-    bool subscribe(ContextType *context, EventCallback callback) noexcept {
+    bool subscribe(EventType type, ContextType *ctx, EventCallback callback) noexcept {
         if constexpr (!RB_ENABLE_CALLBACKS) {
             return false;
         }
 
-        if (callback_count >= MaxCallbacks) {
+        size_t index = static_cast<size_t>(type);
+
+        if (index >= MaxCallbacks) {
             return false;
         }
 
-        callbacks[callback_count].fn = callback;
-        callbacks[callback_count].user_data = static_cast<void *>(context);
-        callback_count++;
-        return true;
-    }
-
-    // bool subscribe(EventCallback &&callback) noexcept {
-    //     if constexpr (!RB_ENABLE_CALLBACKS) {
-    //         return false;
-    //     }
-
-    //     if (callback_count >= MaxCallbacks) {
-    //         return false;
-    //     }
-
-    //     callbacks[callback_count] = std::move(callback);
-    //     callback_count++;
-    //     return true;
-    // }
-
-    /**
-     * @brief unsubscribe
-     * @param index Callback index to remove
-     * @return true if unsubsribed, false if callback buffer empty
-     *
-     * Unsubscribe from buffer events
-     */
-    bool unsubscribe(size_t index) noexcept {
-        if constexpr (!RB_ENABLE_CALLBACKS) {
-            return false;
-        }
-
-        if (index >= callback_count) {
-            return false;
-        }
-
-        callback_count--;
-        callbacks[index] = std::move(callbacks[callback_count]);
+        callbacks[index].fn = callback;
+        callbacks[index].user_data = static_cast<void *>(ctx);
         return true;
     }
 
@@ -765,33 +732,30 @@ private:
             return;
         }
 
-        if (callback_count == 0) {
-            return;
-        }
+        const auto &cb = callbacks[static_cast<size_t>(type)];
 
         event_sequence++;
         BufferEvent evt{type, get_data_size(), get_free_size(), event_sequence};
 
-        for (size_t i = 0; i < callback_count; ++i) {
-            if (callbacks[i].fn != nullptr) {
-                callbacks[i].fn(evt, callbacks[i].user_data);
-            }
+        if (cb.fn != nullptr) {
+            cb.fn(evt, cb.user_data);
         }
     }
 
+    /// Data alignment
+    constexpr static int al = 64;
+
     /// Ring buffer storage (fixed-size, allocated on stack).
     /// Layout: [0] [1] [2] ... [MaxSize-1] -> wraps to [0].
-    /// Consider using an external data storage
-    std::array<T, MaxSize> buf = {};
+    alignas(al) std::array<T, MaxSize> buf = {};
 
+    static constexpr size_t MaxCallbacks = static_cast<size_t>(EventType::_COUNT);
     /// Event notification callbacks
-    std::array<CallbackSlot, MaxCallbacks> callbacks = {};
-    size_t callback_count = 0;
+    alignas(al) std::array<CallbackSlot, MaxCallbacks> callbacks = {};
 
     /// Conditional type of head and tail. Atomic if ThreadSafe is true.
     using atomic_size = std::conditional_t<ThreadSafe, std::atomic<size_t>, size_t>;
-    /// Data alignment of head and tail
-    constexpr static int al = 64;
+
     /// Bitmask we use to check buffer overflow
     constexpr static size_t mask = (MaxSize - 1);
     /// Event sequence counter for monotonic event ordering
