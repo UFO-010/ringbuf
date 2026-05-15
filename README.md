@@ -119,28 +119,48 @@ ringbuf::spsc_ringbuf<Data, 1024, true, rb::OverflowPolicy::TOEND> buf3;
 
 ### Event Callbacks
 
-Monitor buffer state changes:
+When monitoring buffer state changes, you can set up a single callback function to handle all events, or use a different callback function for each event. All callbacks should be marked as noexcept.
 
 ```cpp
-buffer.subscribe([](const ringbuf::BufferEvent& evt) {
-    switch (evt.type) {
-        case ringbuf::EventType::DATA_AVAILABLE:
-            printf("Data available: %zu elements\n", evt.current_size);
-            break;
-        case ringbuf::EventType::BUFFER_FULL:
-            printf("Buffer is full!\n");
-            break;
-        case ringbuf::EventType::BUFFER_EMPTY:
-            printf("Buffer is now empty\n");
-            break;
-        case ringbuf::EventType::OVERFLOW:
-            printf("Overflow occurred! Dropped data\n");
-            break;
-        case ringbuf::EventType::RESET:
-            printf("Buffer reset\n");
-            break;
+class myclass {
+public:
+    void handle(const rb::BufferEvent &evt) noexcept {
+        switch (evt.type) {
+            case rb::EventType::DATA_AVAILABLE:
+                printf("Data available: %zu elements\n", evt.current_size);
+                break;
+            default:
+                break;
+        }
     }
-});
+};
+
+void handler(const rb::BufferEvent &evt, void *ctx) noexcept {
+    myclass *c = static_cast<myclass *>(ctx);
+    c->handle(evt);
+}
+
+int main(){
+    rb::spsc_ringbuf<int, 8, false> rb;
+    myclass myclass;
+
+    // 1. Handle available data
+    rb.subscribe(rb::EventType::DATA_AVAILABLE, &myclass, &handler);
+
+    // 2. Handle buffer exhaustion
+    rb.subscribe(rb::EventType::BUFFER_FULL, &myclass, &handler);
+
+    // 3. Handle empty buffer
+    rb.subscribe(rb::EventType::BUFFER_EMPTY, &myclass, &handler);
+
+    // 4. Handle data drops
+    rb.subscribe(rb::EventType::BUFFER_OVERFLOW, &myclass, &handler);
+
+    // 5. Handle buffer reset
+    rb.subscribe(rb::EventType::RESET, &myclass, &handler);
+
+    rb.push_back(1);
+}
 ```
 
 ### Statistics
@@ -160,7 +180,7 @@ printf("Total bytes read: %lu\n", stats.total_bytes_read);
 ## Template Parameters
 
 ```cpp
-template <typename T, size_t MaxSize, bool ThreadSafe, OverflowPolicy Policy, size_t MaxCallbacks>
+template <typename T, size_t MaxSize, bool ThreadSafe, OverflowPolicy Policy>
 class spsc_ringbuf;
 ```
 
@@ -170,4 +190,3 @@ class spsc_ringbuf;
 | **MaxSize** | Buffer capacity in elements | Must be power of 2 (2, 4, 8, 16, ..., 65536) |
 | **ThreadSafe** | Enable atomic operations | true: uses std::atomic, false: uses plain size_t |
 | **Policy** | Overflow handling | DROP (default), OVERWRITE, FAIL, TOEND |
-| **MaxCallbacks** | Maximum callback number | 4 (default) |
