@@ -580,15 +580,15 @@ TEST(ringbuf_test, CallbackSubscription) {
     static std::vector<rb::BufferEvent> events2;
 
     EXPECT_TRUE(
-        rb.subscribe(rb::EventType::DATA_AVAILABLE, static_cast<void*>(nullptr),
-                     [](const rb::BufferEvent& evt, void*) noexcept { events1.push_back(evt); }));
+        rb.subscribe(rb::EventType::DATA_AVAILABLE, static_cast<void *>(nullptr),
+                     [](const rb::BufferEvent &evt, void *) noexcept { events1.push_back(evt); }));
     EXPECT_TRUE(
-        rb.subscribe(rb::EventType::RESET, static_cast<void*>(nullptr),
-                     [](const rb::BufferEvent& evt, void*) noexcept { events2.push_back(evt); }));
+        rb.subscribe(rb::EventType::RESET, static_cast<void *>(nullptr),
+                     [](const rb::BufferEvent &evt, void *) noexcept { events2.push_back(evt); }));
     // overwrite event callback
     EXPECT_TRUE(
-        rb.subscribe(rb::EventType::DATA_AVAILABLE, static_cast<void*>(nullptr),
-                     [](const rb::BufferEvent& evt, void*) noexcept { events1.push_back(evt); }));
+        rb.subscribe(rb::EventType::DATA_AVAILABLE, static_cast<void *>(nullptr),
+                     [](const rb::BufferEvent &evt, void *) noexcept { events1.push_back(evt); }));
 
     rb.push_back(1);  // Triggers DATA_AVAILABLE
     EXPECT_EQ(events1.at(0).type, rb::EventType::DATA_AVAILABLE);
@@ -607,11 +607,11 @@ TEST(ringbuf_test, OverflowCallback) {
 
     static std::vector<rb::BufferEvent> events;
     EXPECT_TRUE(
-        rb.subscribe(rb::EventType::DATA_AVAILABLE, static_cast<void*>(nullptr),
-                     [](const rb::BufferEvent& evt, void*) noexcept { events.push_back(evt); }));
+        rb.subscribe(rb::EventType::DATA_AVAILABLE, static_cast<void *>(nullptr),
+                     [](const rb::BufferEvent &evt, void *) noexcept { events.push_back(evt); }));
     EXPECT_TRUE(
-        rb.subscribe(rb::EventType::BUFFER_OVERFLOW, static_cast<void*>(nullptr),
-                     [](const rb::BufferEvent& evt, void*) noexcept { events.push_back(evt); }));
+        rb.subscribe(rb::EventType::BUFFER_OVERFLOW, static_cast<void *>(nullptr),
+                     [](const rb::BufferEvent &evt, void *) noexcept { events.push_back(evt); }));
 
     for (int i = 0; i < tempsize; ++i) {
         rb.push_back(i);  // Fill + overflow
@@ -631,16 +631,16 @@ TEST(ringbuf_test, CallbackSubscription_MaxCallbacks) {
     std::vector<rb::BufferEvent> events;
 
     EXPECT_TRUE(rb.subscribe(rb::EventType::DATA_AVAILABLE, &events,
-                             [](const rb::BufferEvent&, void*) noexcept {}));
+                             [](const rb::BufferEvent &, void *) noexcept {}));
 
     // Check getting over _COUNT
     auto invalid_type = static_cast<rb::EventType>(rb::EventType::_COUNT);
     EXPECT_FALSE(
-        rb.subscribe(invalid_type, &events, [](const rb::BufferEvent&, void*) noexcept {}));
+        rb.subscribe(invalid_type, &events, [](const rb::BufferEvent &, void *) noexcept {}));
 
     auto out_of_bounds_type = static_cast<rb::EventType>(100);
     EXPECT_FALSE(
-        rb.subscribe(out_of_bounds_type, &events, [](const rb::BufferEvent&, void*) noexcept {}));
+        rb.subscribe(out_of_bounds_type, &events, [](const rb::BufferEvent &, void *) noexcept {}));
 }
 
 TEST(ringbuf_test, Statistics_TotalPushes) {
