@@ -633,7 +633,7 @@ TEST(ringbuf_test, CallbackSubscription_MaxCallbacks) {
     EXPECT_TRUE(rb.subscribe(rb::EventType::DATA_AVAILABLE, &events,
                              [](const rb::BufferEvent&, void*) noexcept {}));
 
-    // Проверка на выход за границы `_COUNT`
+    // Check getting over _COUNT
     auto invalid_type = static_cast<rb::EventType>(rb::EventType::_COUNT);
     EXPECT_FALSE(
         rb.subscribe(invalid_type, &events, [](const rb::BufferEvent&, void*) noexcept {}));

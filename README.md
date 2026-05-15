@@ -160,7 +160,7 @@ printf("Total bytes read: %lu\n", stats.total_bytes_read);
 ## Template Parameters
 
 ```cpp
-template <typename T, size_t MaxSize, bool ThreadSafe, OverflowPolicy Policy, size_t MaxCallbacks>
+template <typename T, size_t MaxSize, bool ThreadSafe, OverflowPolicy Policy>
 class spsc_ringbuf;
 ```
 
@@ -170,4 +170,3 @@ class spsc_ringbuf;
 | **MaxSize** | Buffer capacity in elements | Must be power of 2 (2, 4, 8, 16, ..., 65536) |
 | **ThreadSafe** | Enable atomic operations | true: uses std::atomic, false: uses plain size_t |
 | **Policy** | Overflow handling | DROP (default), OVERWRITE, FAIL, TOEND |
-| **MaxCallbacks** | Maximum callback number | 4 (default) |
